@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 32% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 32% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 32% 12%;
+
+    --primary: 222 60% 26%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 214 32% 95%;
+    --secondary-foreground: 222 40% 20%;
+
+    --muted: 214 32% 96%;
+    --muted-foreground: 215 16% 44%;
+
+    --accent: 214 90% 96%;
+    --accent-foreground: 222 60% 26%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 56% 32%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 35 92% 40%;
+    --warning-foreground: 0 0% 100%;
+
+    --info: 214 80% 44%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 214 25% 89%;
+    --input: 214 25% 87%;
+    --ring: 222 60% 40%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 34% 8%;
+    --foreground: 210 30% 94%;
+
+    --card: 222 30% 11%;
+    --card-foreground: 210 30% 94%;
+
+    --popover: 222 30% 11%;
+    --popover-foreground: 210 30% 94%;
+
+    --primary: 213 80% 66%;
+    --primary-foreground: 222 40% 12%;
+
+    --secondary: 217 26% 18%;
+    --secondary-foreground: 210 30% 94%;
+
+    --muted: 217 26% 17%;
+    --muted-foreground: 215 18% 62%;
+
+    --accent: 217 32% 20%;
+    --accent-foreground: 210 30% 94%;
+
+    --destructive: 0 62% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 46% 46%;
+    --success-foreground: 222 40% 10%;
+
+    --warning: 35 84% 56%;
+    --warning-foreground: 222 40% 10%;
+
+    --info: 213 78% 62%;
+    --info-foreground: 222 40% 10%;
+
+    --border: 217 26% 22%;
+    --input: 217 26% 24%;
+    --ring: 213 76% 60%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Tabular figures keep score columns aligned in dense tables. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}

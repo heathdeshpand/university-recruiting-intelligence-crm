@@ -1,0 +1,1026 @@
+// University Recruiting Intelligence CRM -- data model
+//
+// Design notes that matter when reading this file:
+//
+//  * The pipeline is layered and never destructive. RawRecord holds exactly
+//    what a source returned. NormalizedRecord holds a cleaned projection of
+//    it. Candidate is the canonical identity produced by entity resolution.
+//    Each layer keeps a link back to the one below it, so every fact in the
+//    CRM can be traced to the bytes it came from.
+//
+//  * Missing information is never "no". Tri-state values (YES/NO/UNKNOWN)
+//    are used wherever absence of a record could otherwise be misread as a
+//    negative signal.
+//
+//  * Signal types and scoring rules are rows, not code. New signal types and
+//    new scoring weights can be added without a schema migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// Authentication
+// ===========================================================================
+
+enum UserRole {
+  ADMIN
+  RECRUITER
+  VIEWER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         UserRole  @default(RECRUITER)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions  Session[]
+  auditLogs AuditLog[]
+  jobs      Job[]
+  exports   Export[]
+  decisions EntityMatch[] @relation("MatchDecidedBy")
+
+  @@index([email])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+  ip        String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ===========================================================================
+// Universities and their domains
+// ===========================================================================
+
+model University {
+  id           String   @id @default(cuid())
+  name         String
+  shortName    String?
+  slug         String   @unique
+  country      String   @default("US")
+  state        String?
+  city         String?
+  athleticName String?
+  aliases      String[] @default([])
+  notes        String?
+  isDemo       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  domains           UniversityDomain[]
+  sources           UniversitySource[]
+  rawRecords        RawRecord[]
+  normalizedRecords NormalizedRecord[]
+  candidates        Candidate[]
+  entityMatches     EntityMatch[]
+  jobs              Job[]
+  exports           Export[]
+  auditLogs         AuditLog[]
+  enrichmentJobs    EnrichmentJob[]
+  settings          UniversitySettings?
+
+  @@index([slug])
+  @@index([isDemo])
+}
+
+model UniversityDomain {
+  id           String     @id @default(cuid())
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  domain       String
+  isPrimary    Boolean    @default(false)
+  notes        String?
+  createdAt    DateTime   @default(now())
+
+  @@unique([universityId, domain])
+  @@index([universityId])
+  @@index([domain])
+}
+
+// Per-university overrides of pipeline configuration. A null column means
+// "inherit the global default", so a university never silently diverges.
+model UniversitySettings {
+  id                 String     @id @default(cuid())
+  universityId       String     @unique
+  university         University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  discoveryThreshold Int?
+  discoveryConfigId  String?
+  finalConfigId      String?
+  maxDiscoveryPages  Int?
+  updatedAt          DateTime   @updatedAt
+}
+
+// ===========================================================================
+// Source registry
+// ===========================================================================
+
+// Source types are DISCOVERY TARGETS, not required datasets. A university
+// that exposes none of a given type is normal, and is recorded as "not found"
+// rather than treated as a failure.
+enum SourceType {
+  GREEK_LIFE
+  FRATERNITY
+  SORORITY
+  STUDENT_ORGANIZATION
+  CLUB_SPORT
+  INTRAMURAL
+  ATHLETICS
+  STUDENT_LEADERSHIP
+  STUDENT_GOVERNMENT
+  ENTREPRENEURSHIP
+  BUSINESS_ORGANIZATION
+  SALES_ORGANIZATION
+  PROFESSIONAL_ORGANIZATION
+  COMPETITIVE_ORGANIZATION
+  HONOR_SOCIETY
+  STUDENT_DIRECTORY
+  NEWS_OR_AWARDS
+  OTHER
+  UNKNOWN
+}
+
+enum SourceStatus {
+  DISCOVERED
+  VALIDATED
+  ACTIVE
+  FAILED
+  UNAVAILABLE
+  REQUIRES_REVIEW
+  DISABLED
+}
+
+enum DiscoveryMethod {
+  SEED_DOMAIN
+  SITEMAP
+  LINK_CRAWL
+  PATH_HEURISTIC
+  SEARCH_API
+  MANUAL
+  DEMO_FIXTURE
+}
+
+enum AccessMethod {
+  OFFICIAL_API
+  STRUCTURED_DATA
+  JSON_ENDPOINT
+  PUBLIC_HTML
+  RENDERED_HTML
+  PUBLIC_PDF
+  CSV_IMPORT
+  DEMO_FIXTURE
+  UNAVAILABLE
+}
+
+// Which extractor handles this source. Adding an extractor means adding a
+// value here and registering an implementation; nothing else changes.
+enum ParserType {
+  HTML_TABLE
+  HTML_LIST
+  HTML_CARD_GRID
+  JSON_ENDPOINT
+  CSV
+  ATHLETICS_ROSTER
+  ORG_DIRECTORY
+  GENERIC_HTML
+  DEMO_FIXTURE
+  PDF_UNSUPPORTED
+  RENDERED_UNSUPPORTED
+  NONE
+}
+
+model UniversitySource {
+  id           String     @id @default(cuid())
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  sourceType      SourceType      @default(UNKNOWN)
+  name            String
+  url             String
+  domain          String
+  description     String?
+  discoveryMethod DiscoveryMethod
+  accessMethod    AccessMethod    @default(PUBLIC_HTML)
+  status          SourceStatus    @default(DISCOVERED)
+  parserType      ParserType      @default(NONE)
+
+  // 0..1. How confident the classifier is that this URL is what we think it
+  // is AND that it actually contains extractable records.
+  confidence      Float   @default(0)
+  classifierNotes String?
+
+  // Populated by validation: what the validator actually saw on the page.
+  validationSummary Json?
+
+  lastDiscoveredAt DateTime?
+  lastValidatedAt  DateTime?
+  lastCollectedAt  DateTime?
+  recordCount      Int       @default(0)
+  errorMessage     String?
+  active           Boolean   @default(true)
+
+  // Detects structural drift between collections (section 51).
+  structureHash String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rawRecords     RawRecord[]
+  evidence       Evidence[]
+  checks         SourceCheck[]
+  enrichmentJobs EnrichmentJob[]
+
+  @@unique([universityId, url])
+  @@index([universityId])
+  @@index([universityId, status])
+  @@index([sourceType])
+  @@index([status])
+  @@index([domain])
+}
+
+// One health observation of a source, written on every collection run.
+model SourceCheck {
+  id            String           @id @default(cuid())
+  sourceId      String
+  source        UniversitySource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  at            DateTime         @default(now())
+  ok            Boolean
+  httpStatus    Int?
+  recordCount   Int?
+  delta         Int?
+  structureHash String?
+  message       String?
+
+  @@index([sourceId, at])
+}
+
+// ===========================================================================
+// Raw and normalized data layers
+// ===========================================================================
+
+// Exactly what the source gave us. Never mutated by later stages.
+model RawRecord {
+  id           String           @id @default(cuid())
+  universityId String
+  university   University       @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  sourceId     String
+  source       UniversitySource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  rawPayload      Json
+  rawName         String?
+  rawOrganization String?
+  rawRole         String?
+  rawMajor        String?
+  rawYear         String?
+  rawSport        String?
+  rawUrl          String?
+
+  // Stable hash of the meaningful content. Makes re-collection idempotent.
+  fingerprint String
+
+  discoveredAt DateTime @default(now())
+
+  normalized NormalizedRecord?
+
+  @@unique([sourceId, fingerprint])
+  @@index([universityId])
+  @@index([sourceId])
+  @@index([fingerprint])
+}
+
+// Cleaned, comparable projection of a RawRecord. Original values are kept
+// alongside so normalization is always reversible and auditable.
+model NormalizedRecord {
+  id           String     @id @default(cuid())
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  rawRecordId  String     @unique
+  rawRecord    RawRecord  @relation(fields: [rawRecordId], references: [id], onDelete: Cascade)
+
+  normalizedName   String
+  firstName        String?
+  middleInitial    String?
+  lastName         String?
+  suffix           String?
+  // Nickname-expanded, punctuation-free key used for entity-resolution blocking.
+  nameKey          String
+  lastNamePhonetic String?
+
+  organization          String?
+  organizationCanonical String?
+  organizationCategory  SourceType?
+  role                  String?
+  roleCanonical         String?
+  isLeadershipRole      Boolean     @default(false)
+  sport                 String?
+  sportCanonical        String?
+  major                 String?
+  majorCanonical        String?
+  graduationYear        Int?
+  email                 String?
+
+  // Fields the source provided that do not fit the canonical schema. Kept so
+  // that a university's unusual data is preserved rather than discarded.
+  sourceSpecific Json?
+
+  normalizedAt DateTime @default(now())
+
+  candidateLink CandidateSourceRecord?
+  matchesAsA    EntityMatch[]          @relation("MatchRecordA")
+  matchesAsB    EntityMatch[]          @relation("MatchRecordB")
+  evidence      Evidence[]
+
+  @@index([universityId])
+  @@index([universityId, nameKey])
+  @@index([nameKey])
+  @@index([lastNamePhonetic])
+  @@index([normalizedName])
+  @@index([graduationYear])
+}
+
+// ===========================================================================
+// Canonical candidate
+// ===========================================================================
+
+enum CandidateStatus {
+  NEW
+  DISCOVERED
+  QUALIFIED
+  ENRICHED
+  REVIEWED
+  ARCHIVED
+}
+
+enum EnrichmentStatus {
+  NOT_ELIGIBLE
+  QUEUED
+  PROCESSING
+  ENRICHED
+  FAILED
+  MANUAL_REVIEW
+}
+
+enum CareerStage {
+  STUDENT
+  NEAR_GRADUATION
+  RECENT_GRADUATE
+  ALUMNI
+  UNKNOWN
+}
+
+enum Tier {
+  TIER_A
+  TIER_B
+  TIER_C
+  TIER_D
+  UNRANKED
+}
+
+model Candidate {
+  id           String     @id @default(cuid())
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  canonicalName String
+  firstName     String?
+  middleInitial String?
+  lastName      String?
+
+  // Contact fields are only ever populated by enrichment against a public or
+  // authorized directory source, and only for candidates that qualified.
+  email String?
+  phone String?
+
+  major          String?
+  graduationYear Int?
+  careerStage    CareerStage @default(UNKNOWN)
+
+  discoveryScore   Int?
+  finalScore       Int?
+  tier             Tier             @default(UNRANKED)
+  enrichmentStatus EnrichmentStatus @default(NOT_ELIGIBLE)
+  status           CandidateStatus  @default(NEW)
+
+  // Cached counts, kept for fast CRM sorting/filtering. Recomputed by the
+  // pipeline; never a source of truth.
+  sourceCount     Int     @default(0)
+  recordCount     Int     @default(0)
+  signalCount     Int     @default(0)
+  matchConfidence Float?
+  needsReview     Boolean @default(false)
+
+  // True when a human has edited identity fields; the pipeline will not
+  // overwrite a human's correction.
+  manuallyEdited Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sourceRecords  CandidateSourceRecord[]
+  evidence       Evidence[]
+  signals        Signal[]
+  patterns       SignalPattern[]
+  scores         Score[]
+  matchesAsA     EntityMatch[]           @relation("MatchCandidateA")
+  matchesAsB     EntityMatch[]           @relation("MatchCandidateB")
+  enrichmentJobs EnrichmentJob[]
+  outcomes       CandidateOutcome[]
+
+  @@index([universityId])
+  @@index([universityId, finalScore])
+  @@index([universityId, discoveryScore])
+  @@index([universityId, status])
+  @@index([universityId, enrichmentStatus])
+  @@index([universityId, tier])
+  @@index([finalScore])
+  @@index([discoveryScore])
+  @@index([graduationYear])
+  @@index([status])
+  @@index([canonicalName])
+  @@index([needsReview])
+}
+
+// Join between a canonical candidate and one normalized source record.
+// `pinned` marks an assignment made by a human, which re-running entity
+// resolution must not undo.
+model CandidateSourceRecord {
+  id                 String           @id @default(cuid())
+  candidateId        String
+  candidate          Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  normalizedRecordId String           @unique
+  normalizedRecord   NormalizedRecord @relation(fields: [normalizedRecordId], references: [id], onDelete: Cascade)
+  pinned             Boolean          @default(false)
+  addedAt            DateTime         @default(now())
+  addedBy            String?
+
+  @@index([candidateId])
+}
+
+// ===========================================================================
+// Evidence and provenance
+// ===========================================================================
+
+enum EvidenceType {
+  ORGANIZATION_MEMBERSHIP
+  GREEK_MEMBERSHIP
+  CLUB_SPORT_MEMBERSHIP
+  VARSITY_ATHLETICS
+  INTRAMURAL_PARTICIPATION
+  LEADERSHIP_ROLE
+  ACADEMIC_PROGRAM
+  GRADUATION_YEAR
+  CONTACT_INFORMATION
+  WORK_EXPERIENCE
+  AWARD_OR_RECOGNITION
+  JOB_SEARCH_STATEMENT
+  OTHER
+}
+
+// Whether a statement is something the source literally said, something the
+// system inferred from it, or something we simply do not know. Inference is
+// never promoted to fact (section 54).
+enum AssertionKind {
+  FACT
+  INFERENCE
+  UNKNOWN
+}
+
+enum Confidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Evidence {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  sourceId String?
+  source   UniversitySource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  normalizedRecordId String?
+  normalizedRecord   NormalizedRecord? @relation(fields: [normalizedRecordId], references: [id], onDelete: SetNull)
+
+  evidenceType  EvidenceType
+  assertionKind AssertionKind @default(FACT)
+  statement     String
+  originalValue String?
+  sourceUrl     String?
+  confidence    Confidence    @default(MEDIUM)
+  discoveredAt  DateTime      @default(now())
+
+  // Deduplicates identical evidence across re-runs.
+  fingerprint String
+
+  signalLinks  SignalEvidence[]
+  scoreFactors ScoreFactor[]
+
+  @@unique([candidateId, fingerprint])
+  @@index([candidateId])
+  @@index([sourceId])
+  @@index([evidenceType])
+}
+
+// ===========================================================================
+// Signals
+// ===========================================================================
+
+enum SignalCategory {
+  SOCIAL
+  COMPETITIVE
+  LEADERSHIP
+  ENTREPRENEURSHIP
+  BUSINESS
+  SALES
+  CAREER
+  WORK_EXPERIENCE
+  CUSTOMER_FACING
+  JOB_SEARCH
+  TIMING
+  OTHER
+}
+
+enum TriState {
+  YES
+  NO
+  UNKNOWN
+}
+
+// The signal taxonomy lives in the database so it can grow without a schema
+// migration. `key` is the stable identifier referenced by scoring rules.
+model SignalDefinition {
+  id          String         @id @default(cuid())
+  key         String         @unique
+  label       String
+  category    SignalCategory
+  description String
+  active      Boolean        @default(true)
+  isBuiltIn   Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  signals Signal[]
+
+  @@index([category])
+}
+
+model Signal {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  definitionKey String
+  definition    SignalDefinition @relation(fields: [definitionKey], references: [key], onDelete: Cascade)
+  category      SignalCategory
+
+  value       TriState   @default(UNKNOWN)
+  confidence  Confidence @default(MEDIUM)
+  // How many distinct pieces of evidence support this signal. Used by rules
+  // that reward breadth (e.g. "member of multiple organizations").
+  occurrences Int        @default(1)
+  detail      String?
+  extractedAt DateTime   @default(now())
+
+  evidenceLinks SignalEvidence[]
+
+  @@unique([candidateId, definitionKey])
+  @@index([candidateId])
+  @@index([definitionKey])
+  @@index([category])
+  @@index([value])
+}
+
+model SignalEvidence {
+  signalId   String
+  signal     Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  evidenceId String
+  evidence   Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@id([signalId, evidenceId])
+  @@index([evidenceId])
+}
+
+// A named co-occurrence of signals, e.g. "Greek Life + Club Sport +
+// Leadership". Deliberately descriptive, never a psychological conclusion.
+model SignalPattern {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  patternKey  String
+  label       String
+  signalKeys  String[]
+  detectedAt  DateTime  @default(now())
+
+  @@unique([candidateId, patternKey])
+  @@index([candidateId])
+  @@index([patternKey])
+}
+
+// ===========================================================================
+// Entity resolution
+// ===========================================================================
+
+enum MatchStatus {
+  AUTO_MATCHED
+  PROBABLE_MATCH
+  MANUAL_REVIEW
+  NOT_MATCHED
+}
+
+enum ResolutionMethod {
+  DETERMINISTIC
+  PROBABILISTIC
+  MANUAL
+  AI_ASSISTED
+}
+
+enum ManualDecision {
+  CONFIRMED
+  REJECTED
+}
+
+// One pairwise comparison between two normalized records. Candidate ids are
+// cached so the review UI can show "candidate A vs candidate B" without
+// recomputing clusters.
+model EntityMatch {
+  id           String     @id @default(cuid())
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  recordAId String
+  recordA   NormalizedRecord @relation("MatchRecordA", fields: [recordAId], references: [id], onDelete: Cascade)
+  recordBId String
+  recordB   NormalizedRecord @relation("MatchRecordB", fields: [recordBId], references: [id], onDelete: Cascade)
+
+  candidateAId String?
+  candidateA   Candidate? @relation("MatchCandidateA", fields: [candidateAId], references: [id], onDelete: SetNull)
+  candidateBId String?
+  candidateB   Candidate? @relation("MatchCandidateB", fields: [candidateBId], references: [id], onDelete: SetNull)
+
+  matchScore       Float
+  confidence       Float
+  status           MatchStatus
+  resolutionMethod ResolutionMethod @default(PROBABILISTIC)
+
+  // Human-readable explanations, e.g.
+  //   matchingFactors:    ["Same last name", "Compatible graduation year"]
+  //   conflictingFactors: ["Different major"]
+  matchingFactors    Json
+  conflictingFactors Json
+
+  manualDecision ManualDecision?
+  decidedById    String?
+  decidedBy      User?           @relation("MatchDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt      DateTime?
+  decisionNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([recordAId, recordBId])
+  @@index([universityId])
+  @@index([universityId, status])
+  @@index([status])
+  @@index([manualDecision])
+  @@index([matchScore])
+}
+
+// ===========================================================================
+// Scoring
+// ===========================================================================
+
+enum ScoreKind {
+  DISCOVERY
+  FINAL
+}
+
+// A named, versioned set of scoring rules. Weights are data, not code, so a
+// recruiter can retune scoring without a deploy.
+model ScoringConfig {
+  id                 String    @id @default(cuid())
+  name               String
+  kind               ScoreKind
+  description        String?
+  isDefault          Boolean   @default(false)
+  discoveryThreshold Int       @default(60)
+  // Per-category caps, e.g. { "SOCIAL": 25, "COMPETITIVE": 25 }
+  categoryCaps       Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  rules  ScoringRule[]
+  scores Score[]
+
+  @@unique([name, kind])
+  @@index([kind, isDefault])
+}
+
+model ScoringRule {
+  id       String        @id @default(cuid())
+  configId String
+  config   ScoringConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  key      String
+  label    String
+  category SignalCategory
+  points   Int
+
+  // The signal this rule reads. `requiredValue` is normally YES; a rule never
+  // fires on UNKNOWN, which is how "missing data is not negative data" is
+  // enforced at the scoring layer.
+  signalKey     String
+  requiredValue TriState @default(YES)
+
+  // Optional threshold on Signal.occurrences, e.g. "2 or more organizations".
+  minOccurrences Int @default(1)
+
+  // Points awarded per occurrence beyond the first, and the cap on that.
+  pointsPerExtraOccurrence Int  @default(0)
+  maxPoints                Int?
+
+  active Boolean @default(true)
+  order  Int     @default(0)
+
+  @@unique([configId, key])
+  @@index([configId])
+  @@index([signalKey])
+}
+
+model Score {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  kind     ScoreKind
+  value    Int
+  configId String
+  config   ScoringConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  // Per-category subtotals: { "SOCIAL": { "earned": 18, "max": 25 }, ... }
+  breakdown  Json
+  computedAt DateTime @default(now())
+
+  factors ScoreFactor[]
+
+  @@unique([candidateId, kind])
+  @@index([candidateId])
+  @@index([kind, value])
+}
+
+model ScoreFactor {
+  id      String @id @default(cuid())
+  scoreId String
+  score   Score  @relation(fields: [scoreId], references: [id], onDelete: Cascade)
+
+  ruleKey         String
+  label           String
+  category        SignalCategory
+  points          Int
+  evidenceId      String?
+  evidence        Evidence?      @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+  // Human-readable evidence summary, retained even if the evidence row is
+  // later removed, so a historical score stays explainable.
+  evidenceSummary String?
+  sourceName      String?
+  sourceUrl       String?
+  confidence      Confidence     @default(MEDIUM)
+
+  @@index([scoreId])
+  @@index([ruleKey])
+}
+
+// ===========================================================================
+// Enrichment
+// ===========================================================================
+
+enum EnrichmentOutcome {
+  MATCHED
+  NO_MATCH
+  AMBIGUOUS
+  SOURCE_UNAVAILABLE
+  ERROR
+}
+
+// One enrichment attempt for one candidate against one source.
+model EnrichmentJob {
+  id           String            @id @default(cuid())
+  universityId String
+  university   University        @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  candidateId  String
+  candidate    Candidate         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  sourceId     String?
+  source       UniversitySource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  status         EnrichmentStatus @default(QUEUED)
+  qualifiedScore Int?
+  reason         String?
+  attempts       Int              @default(0)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  error          String?
+  createdAt      DateTime         @default(now())
+
+  results EnrichmentResult[]
+
+  @@index([universityId, status])
+  @@index([candidateId])
+  @@index([status])
+}
+
+model EnrichmentResult {
+  id              String        @id @default(cuid())
+  enrichmentJobId String
+  enrichmentJob   EnrichmentJob @relation(fields: [enrichmentJobId], references: [id], onDelete: Cascade)
+
+  outcome            EnrichmentOutcome
+  matchConfidence    Float?
+  matchedName        String?
+  // Only non-sensitive fields the source legitimately published.
+  fields             Json
+  matchingFactors    Json?
+  conflictingFactors Json?
+  sourceUrl          String?
+  createdAt          DateTime          @default(now())
+
+  @@index([enrichmentJobId])
+}
+
+// ===========================================================================
+// Jobs and orchestration
+// ===========================================================================
+
+enum JobType {
+  SOURCE_DISCOVERY
+  SOURCE_VALIDATION
+  DATA_COLLECTION
+  NORMALIZATION
+  ENTITY_RESOLUTION
+  SIGNAL_EXTRACTION
+  DISCOVERY_SCORING
+  ENRICHMENT
+  FINAL_SCORING
+  EXPORT
+  FULL_PIPELINE
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Job {
+  id           String      @id @default(cuid())
+  type         JobType
+  universityId String?
+  university   University? @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  status   JobStatus @default(QUEUED)
+  progress Int       @default(0)
+  total    Int       @default(0)
+  step     String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  error       String?
+  metadata    Json?
+  // Set for stages spawned by FULL_PIPELINE, so the UI can nest them.
+  parentJobId String?
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  logs JobLog[]
+
+  @@index([universityId, status])
+  @@index([status, createdAt])
+  @@index([type])
+  @@index([parentJobId])
+}
+
+model JobLog {
+  id      String   @id @default(cuid())
+  jobId   String
+  job     Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  level   String   @default("info")
+  message String
+  meta    Json?
+  at      DateTime @default(now())
+
+  @@index([jobId, at])
+}
+
+// ===========================================================================
+// Exports
+// ===========================================================================
+
+enum ExportStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model Export {
+  id           String     @id @default(cuid())
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  filename    String
+  filePath    String?
+  status      ExportStatus @default(QUEUED)
+  sizeBytes   Int?
+  // Row counts per worksheet: { "Candidates": 512, "Sources": 7, ... }
+  sheetCounts Json?
+  error       String?
+
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([universityId, createdAt])
+  @@index([status])
+}
+
+// ===========================================================================
+// Audit log
+// ===========================================================================
+
+model AuditLog {
+  id      String  @id @default(cuid())
+  actorId String?
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  action       String
+  entityType   String
+  entityId     String?
+  universityId String?
+  university   University? @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  summary  String
+  metadata Json?
+  ip       String?
+  at       DateTime @default(now())
+
+  @@index([at])
+  @@index([universityId, at])
+  @@index([action])
+  @@index([entityType, entityId])
+}
+
+// ===========================================================================
+// Future outcome tracking
+// ===========================================================================
+
+// Not used by V1 scoring, which is deterministic and transparent. This table
+// exists so that real recruiting outcomes can be recorded now and later
+// compared against the scores the system produced (section 74).
+enum OutcomeType {
+  CONTACTED
+  RESPONDED
+  INTERVIEWED
+  OFFERED
+  HIRED
+  RETAINED_90_DAYS
+  NOT_INTERESTED
+  OTHER
+}
+
+model CandidateOutcome {
+  id          String      @id @default(cuid())
+  candidateId String
+  candidate   Candidate   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  outcomeType OutcomeType
+  occurredAt  DateTime
+  notes       String?
+  recordedBy  String?
+  createdAt   DateTime    @default(now())
+
+  @@index([candidateId])
+  @@index([outcomeType])
+}
