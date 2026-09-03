@@ -1,6 +1,6 @@
 import { structureHash } from "@/lib/util/hash";
 import { loadHtml, looksJavaScriptRendered } from "@/lib/pipeline/extract/dom";
-import type { Extractor, ExtractionOutcome, ExtractorInput } from "@/lib/pipeline/extract/types";
+import type { Extractor, ExtractionOutcome } from "@/lib/pipeline/extract/types";
 
 /**
  * Honest failures.

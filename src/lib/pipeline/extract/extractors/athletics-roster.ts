@@ -9,7 +9,7 @@ import {
   parseTables,
   stripChrome,
 } from "@/lib/pipeline/extract/dom";
-import type { ExtractedRecord, Extractor, ExtractionOutcome, ExtractorInput } from "@/lib/pipeline/extract/types";
+import type { ExtractedRecord, Extractor, ExtractionOutcome } from "@/lib/pipeline/extract/types";
 
 /**
  * Varsity athletics rosters.

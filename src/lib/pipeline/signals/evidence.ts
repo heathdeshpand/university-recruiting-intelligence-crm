@@ -1,5 +1,6 @@
 import type { AssertionKind, Confidence, EvidenceType, SourceType } from "@prisma/client";
 import { fingerprint } from "@/lib/util/hash";
+import { containsAnyPhrase, containsPhrase, longestMatchingPhrase } from "@/lib/util/text";
 import {
   CAREER_TRANSITION_PHRASES,
   JOB_SEARCH_PHRASES,
@@ -203,7 +204,7 @@ export function buildEvidence(input: EvidenceInput): BuiltEvidence[] {
     // has recruited, a philanthropy chair has fundraised.
     const roleLower = input.role.toLowerCase();
     for (const rule of ROLE_SIGNAL_MAP) {
-      if (rule.keywords.some((k) => roleLower.includes(k))) {
+      if (rule.keywords.some((k) => containsPhrase(roleLower, k))) {
         evidence.push(
           make(input, {
             evidenceType: "WORK_EXPERIENCE",
@@ -247,7 +248,7 @@ export function buildEvidence(input: EvidenceInput): BuiltEvidence[] {
     const noteLower = input.note.toLowerCase();
 
     for (const rule of WORK_EXPERIENCE_RULES) {
-      const hit = rule.keywords.find((k) => noteLower.includes(k));
+      const hit = longestMatchingPhrase(noteLower, rule.keywords);
       if (!hit) continue;
       evidence.push(
         make(input, {
@@ -260,7 +261,7 @@ export function buildEvidence(input: EvidenceInput): BuiltEvidence[] {
       );
     }
 
-    if (JOB_SEARCH_PHRASES.some((p) => noteLower.includes(p))) {
+    if (containsAnyPhrase(noteLower, JOB_SEARCH_PHRASES)) {
       evidence.push(
         make(input, {
           evidenceType: "JOB_SEARCH_STATEMENT",
@@ -272,7 +273,7 @@ export function buildEvidence(input: EvidenceInput): BuiltEvidence[] {
       );
     }
 
-    if (CAREER_TRANSITION_PHRASES.some((p) => noteLower.includes(p))) {
+    if (containsAnyPhrase(noteLower, CAREER_TRANSITION_PHRASES)) {
       evidence.push(
         make(input, {
           evidenceType: "JOB_SEARCH_STATEMENT",
@@ -298,7 +299,7 @@ export function buildEvidence(input: EvidenceInput): BuiltEvidence[] {
 function signalsForOrganization(organization: string, category: SourceType): string[] {
   const lower = organization.toLowerCase();
   const fromName = ORGANIZATION_RULES.filter((rule) =>
-    rule.keywords.some((k) => lower.includes(k)),
+    rule.keywords.some((k) => containsPhrase(lower, k)),
   ).flatMap((rule) => rule.signals);
 
   const fromCategory = signalsForCategory(category);

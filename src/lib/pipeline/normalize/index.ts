@@ -1,6 +1,14 @@
 import type { SourceType } from "@prisma/client";
 import { parseName } from "@/lib/util/names";
-import { normalizeWhitespace, phoneticKey, stripDiacritics, titleCase } from "@/lib/util/text";
+import {
+  containsPhrase,
+  longestMatchingPhrase,
+  normalizeWhitespace,
+  phoneticKey,
+  stripDiacritics,
+  titleCase,
+} from "@/lib/util/text";
+import { looksLikePersonName } from "@/lib/util/names";
 import {
   GREEK_LETTERS,
   LEADERSHIP_ROLES,
@@ -67,7 +75,7 @@ export function categorizeOrganization(raw: string): SourceType | undefined {
   const lower = raw.toLowerCase();
 
   for (const rule of ORGANIZATION_RULES) {
-    if (rule.keywords.some((k) => lower.includes(k))) return rule.sourceType;
+    if (rule.keywords.some((k) => containsPhrase(lower, k))) return rule.sourceType;
   }
 
   // Greek letters alone are ambiguous -- honor societies and professional
@@ -86,18 +94,20 @@ export function canonicalizeRole(raw: string): { canonical?: string; isLeadershi
   const lower = normalizeWhitespace(raw).toLowerCase();
   if (!lower) return { isLeadership: false };
 
-  // LEADERSHIP_ROLES is ordered so that more specific titles are tested
-  // first; "vice president" must not be swallowed by "president".
-  const ordered = [...LEADERSHIP_ROLES].sort(
-    (a, b) =>
-      Math.max(...b.keywords.map((k) => k.length)) - Math.max(...a.keywords.map((k) => k.length)),
-  );
+  // The longest *matched* keyword wins, not the longest keyword in a group.
+  // "Vice President" matches both "president" and "vice president"; ranking by
+  // what actually matched is what stops it collapsing into "President".
+  let best: { canonical: string; matched: string } | undefined;
 
-  for (const role of ordered) {
-    if (role.keywords.some((k) => lower.includes(k))) {
-      return { canonical: role.canonical, isLeadership: true };
+  for (const role of LEADERSHIP_ROLES) {
+    const matched = longestMatchingPhrase(lower, role.keywords);
+    if (!matched) continue;
+    if (!best || matched.length > best.matched.length) {
+      best = { canonical: role.canonical, matched };
     }
   }
+
+  if (best) return { canonical: best.canonical, isLeadership: true };
 
   return { canonical: titleCase(raw), isLeadership: false };
 }
@@ -105,7 +115,10 @@ export function canonicalizeRole(raw: string): { canonical?: string; isLeadershi
 export function canonicalizeSport(raw: string): string | undefined {
   const key = stripDiacritics(raw)
     .toLowerCase()
-    .replace(/\b(club|varsity|intramural|team|roster)\b/g, " ")
+    // Apostrophes are deleted rather than spaced, so "men's" does not become
+    // the two tokens "men" and "s".
+    .replace(/['\u2019]/g, "")
+    .replace(/\b(club|varsity|intramural|team|roster|mens|womens|men|women|coed)\b/g, " ")
     .replace(/[^a-z ]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -171,6 +184,11 @@ export interface RawRecordInput {
 /** Normalizes one raw record. Returns null when it has no usable name. */
 export function normalizeRecord(raw: RawRecordInput, now = new Date()): NormalizedFields | null {
   if (!raw.rawName) return null;
+
+  // Page furniture that an extractor mistook for a name must not become a
+  // person. Rejecting it here keeps it out of entity resolution entirely,
+  // while the raw record survives as evidence of what the extractor saw.
+  if (!looksLikePersonName(raw.rawName)) return null;
 
   const parsed = parseName(raw.rawName);
   if (!parsed.last || !parsed.key) return null;

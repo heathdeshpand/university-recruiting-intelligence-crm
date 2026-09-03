@@ -180,3 +180,37 @@ export function tokenize(input: string): string[] {
     .split(/[^a-z0-9]+/)
     .filter((t) => t.length > 0);
 }
+
+/**
+ * Whole-phrase containment.
+ *
+ * Plain `includes` is wrong for keyword lexicons and fails in ways that are
+ * hard to notice: "Adventure" contains "venture", so an outdoor club gets
+ * classified as an entrepreneurship organization. Matching on token
+ * boundaries instead keeps multi-word phrases working while refusing
+ * accidental substrings.
+ */
+export function containsPhrase(haystack: string, phrase: string): boolean {
+  const needle = phrase.trim().toLowerCase();
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, "i").test(haystack.toLowerCase());
+}
+
+/** True when any of the phrases appears as a whole phrase. */
+export function containsAnyPhrase(haystack: string, phrases: readonly string[]): boolean {
+  return phrases.some((p) => containsPhrase(haystack, p));
+}
+
+/** The longest phrase that appears in the haystack, or undefined. */
+export function longestMatchingPhrase(
+  haystack: string,
+  phrases: readonly string[],
+): string | undefined {
+  let best: string | undefined;
+  for (const phrase of phrases) {
+    if (!containsPhrase(haystack, phrase)) continue;
+    if (!best || phrase.length > best.length) best = phrase;
+  }
+  return best;
+}

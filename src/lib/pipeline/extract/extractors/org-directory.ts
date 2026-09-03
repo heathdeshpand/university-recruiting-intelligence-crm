@@ -1,6 +1,6 @@
 import { structureHash } from "@/lib/util/hash";
 import { looksLikePersonName, parseName } from "@/lib/util/names";
-import { normalizeWhitespace } from "@/lib/util/text";
+import { containsAnyPhrase, normalizeWhitespace } from "@/lib/util/text";
 import { LEADERSHIP_ROLES } from "@/lib/config/organizations";
 import {
   findEmail,
@@ -43,8 +43,7 @@ function resolveBlock(block: RepeatedBlock): {
     if (!looksLikePersonName(candidate)) continue;
 
     const remainder = normalizeWhitespace(block.remainder);
-    const isRole =
-      remainder.length > 0 && ROLE_KEYWORDS.some((k) => remainder.toLowerCase().includes(k));
+    const isRole = remainder.length > 0 && containsAnyPhrase(remainder, ROLE_KEYWORDS);
 
     if (isRole) {
       return { name: candidate, role: stripLeadingSeparators(remainder) };
@@ -140,7 +139,7 @@ function splitNameAndRole(text: string): { name?: string; role?: string } {
     if (
       maybeRole &&
       maybeName &&
-      ROLE_KEYWORDS.some((k) => maybeRole.toLowerCase().includes(k)) &&
+      containsAnyPhrase(maybeRole, ROLE_KEYWORDS) &&
       looksLikePersonName(maybeName)
     ) {
       return { name: maybeName.trim(), role: maybeRole.trim() };
@@ -154,7 +153,7 @@ function splitNameAndRole(text: string): { name?: string; role?: string } {
     const head = line.slice(0, idx).trim();
     const tail = line.slice(idx + 1).trim();
     if (looksLikePersonName(head)) {
-      const isRole = tail.length > 0 && ROLE_KEYWORDS.some((k) => tail.toLowerCase().includes(k));
+      const isRole = tail.length > 0 && containsAnyPhrase(tail, ROLE_KEYWORDS);
       return { name: head, role: isRole ? tail : undefined };
     }
   }
@@ -163,7 +162,7 @@ function splitNameAndRole(text: string): { name?: string; role?: string } {
   const firstLine = line.split(/\s{2,}/)[0] ?? line;
   if (looksLikePersonName(firstLine)) {
     const rest = line.slice(firstLine.length).trim();
-    const isRole = rest.length > 0 && ROLE_KEYWORDS.some((k) => rest.toLowerCase().includes(k));
+    const isRole = rest.length > 0 && containsAnyPhrase(rest, ROLE_KEYWORDS);
     return { name: firstLine, role: isRole ? rest : undefined };
   }
 

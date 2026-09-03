@@ -8,7 +8,7 @@ import {
   pageTitle,
   stripChrome,
 } from "@/lib/pipeline/extract/dom";
-import type { ExtractedRecord, Extractor, ExtractionOutcome, ExtractorInput } from "@/lib/pipeline/extract/types";
+import type { ExtractedRecord, Extractor, ExtractionOutcome } from "@/lib/pipeline/extract/types";
 
 /**
  * Last-resort HTML extractor.
@@ -54,10 +54,16 @@ export const genericHtmlExtractor: Extractor = {
       const full = normalizeWhitespace($(el).text());
       if (full.length === 0 || full.length > 300) return;
 
-      const head = (full.split(/[,–—|:]/)[0] ?? full).trim();
+      const head = (full.split(/[,\u2013\u2014|:]/)[0] ?? full).trim();
       if (!looksLikePersonName(head)) return;
-      if (seen.has(head.toLowerCase())) return;
-      seen.add(head.toLowerCase());
+
+      // Deduplicated on the whole line, never on the name alone. Two different
+      // people can share a name -- that is the case this entire product is
+      // built to handle -- so collapsing them here would destroy the evidence
+      // entity resolution needs to tell them apart.
+      const key = full.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
 
       const tag = (el as { tagName?: string }).tagName ?? "";
       selectors.push(tag);

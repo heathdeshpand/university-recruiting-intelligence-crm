@@ -2,9 +2,8 @@ import type { PrismaClient } from "@prisma/client";
 import { fetchSourceContent } from "@/lib/pipeline/transport";
 import { extract } from "@/lib/pipeline/extract/registry";
 import { normalizeRecord } from "@/lib/pipeline/normalize";
-import { buildSurnameFrequency, scorePair } from "@/lib/pipeline/resolve/score";
-import type { ResolvableRecord } from "@/lib/pipeline/resolve/types";
 import { ENRICHMENT_ONLY_SOURCE_TYPES } from "@/lib/config/discovery";
+import type { DirectoryEntry, DirectoryIndex } from "@/lib/pipeline/enrich/types";
 import { phoneticKey } from "@/lib/util/text";
 import { parseName } from "@/lib/util/names";
 
@@ -21,52 +20,6 @@ import { parseName } from "@/lib/util/names";
  * is never stored as raw records, because storing it would amount to
  * ingesting the entire student body through the back door.
  */
-
-/** Fields the directory may contribute. Deliberately narrow. */
-export interface EnrichmentFields {
-  email?: string;
-  major?: string;
-  graduationYear?: number;
-}
-
-export type EnrichmentOutcomeKind =
-  | "MATCHED"
-  | "NO_MATCH"
-  | "AMBIGUOUS"
-  | "SOURCE_UNAVAILABLE"
-  | "ERROR";
-
-export interface EnrichmentAttempt {
-  outcome: EnrichmentOutcomeKind;
-  matchConfidence: number | null;
-  matchedName: string | null;
-  fields: EnrichmentFields;
-  matchingFactors: Array<{ label: string; detail?: string }>;
-  conflictingFactors: Array<{ label: string; detail?: string }>;
-  sourceUrl: string | null;
-  message: string;
-}
-
-/** A directory entry, in the shape entity resolution compares. */
-interface DirectoryEntry extends ResolvableRecord {
-  email: string | null;
-  major: string | null;
-  graduationYear: number | null;
-}
-
-export interface DirectoryIndex {
-  sourceId: string;
-  sourceName: string;
-  sourceUrl: string;
-  entries: DirectoryEntry[];
-  /** Entries keyed by phonetic surname, for fast lookup. */
-  byPhonetic: Map<string, DirectoryEntry[]>;
-}
-
-/** Confidence at or above which a directory match is accepted. */
-export const DIRECTORY_MATCH_THRESHOLD = 0.85;
-/** How close the runner-up may be before the match is called ambiguous. */
-export const AMBIGUITY_MARGIN = 0.08;
 
 /**
  * Loads and indexes a university's enrichment sources.
@@ -168,123 +121,11 @@ export async function loadDirectories(
   return { directories, problems };
 }
 
-/** The candidate side of a directory comparison. */
-export interface EnrichableCandidate {
-  id: string;
-  canonicalName: string;
-  firstName: string | null;
-  middleInitial: string | null;
-  lastName: string | null;
-  major: string | null;
-  graduationYear: number | null;
-  email: string | null;
-}
 
-export function enrichCandidate(
-  candidate: EnrichableCandidate,
-  directory: DirectoryIndex,
-): EnrichmentAttempt {
-  const phonetic = candidate.lastName ? phoneticKey(candidate.lastName) : "";
-  const pool = directory.byPhonetic.get(phonetic) ?? [];
-
-  if (pool.length === 0) {
-    return {
-      outcome: "NO_MATCH",
-      matchConfidence: null,
-      matchedName: null,
-      fields: {},
-      matchingFactors: [],
-      conflictingFactors: [],
-      sourceUrl: directory.sourceUrl,
-      message: `No entry with a comparable surname was found in ${directory.sourceName}.`,
-    };
-  }
-
-  const candidateRecord: ResolvableRecord = {
-    id: candidate.id,
-    normalizedName: candidate.canonicalName,
-    firstName: candidate.firstName,
-    middleInitial: candidate.middleInitial,
-    lastName: candidate.lastName,
-    suffix: null,
-    nameKey: "",
-    lastNamePhonetic: phonetic,
-    organizationCanonical: null,
-    sportCanonical: null,
-    majorCanonical: candidate.major,
-    graduationYear: candidate.graduationYear,
-    email: candidate.email,
-    sourceId: "candidate",
-  };
-
-  const frequency = buildSurnameFrequency(directory.entries);
-
-  const scored = pool
-    .map((entry) => ({ entry, result: scorePair(candidateRecord, entry, frequency) }))
-    .sort((a, b) => b.result.matchScore - a.result.matchScore);
-
-  const best = scored[0];
-  if (!best || best.result.confidence < DIRECTORY_MATCH_THRESHOLD - 0.25) {
-    return {
-      outcome: "NO_MATCH",
-      matchConfidence: best?.result.confidence ?? null,
-      matchedName: null,
-      fields: {},
-      matchingFactors: [],
-      conflictingFactors: best?.result.conflictingFactors.map((f) => ({ label: f.label, detail: f.detail })) ?? [],
-      sourceUrl: directory.sourceUrl,
-      message: `The closest entry in ${directory.sourceName} scored ${Math.round((best?.result.confidence ?? 0) * 100)}%, which is too low to accept.`,
-    };
-  }
-
-  const runnerUp = scored[1];
-  const isAmbiguous =
-    runnerUp !== undefined &&
-    best.result.confidence - runnerUp.result.confidence < AMBIGUITY_MARGIN &&
-    runnerUp.result.confidence >= DIRECTORY_MATCH_THRESHOLD - 0.15;
-
-  if (isAmbiguous) {
-    // Two directory entries fit about equally well. Guessing would silently
-    // attach the wrong person's contact details, so this goes to a human.
-    return {
-      outcome: "AMBIGUOUS",
-      matchConfidence: best.result.confidence,
-      matchedName: best.entry.normalizedName,
-      fields: {},
-      matchingFactors: best.result.matchingFactors.map((f) => ({ label: f.label, detail: f.detail })),
-      conflictingFactors: best.result.conflictingFactors.map((f) => ({ label: f.label, detail: f.detail })),
-      sourceUrl: directory.sourceUrl,
-      message: `Two directory entries matched almost equally well (${Math.round(best.result.confidence * 100)}% and ${Math.round(runnerUp!.result.confidence * 100)}%). Left for manual review rather than guessing.`,
-    };
-  }
-
-  if (best.result.confidence < DIRECTORY_MATCH_THRESHOLD) {
-    return {
-      outcome: "AMBIGUOUS",
-      matchConfidence: best.result.confidence,
-      matchedName: best.entry.normalizedName,
-      fields: {},
-      matchingFactors: best.result.matchingFactors.map((f) => ({ label: f.label, detail: f.detail })),
-      conflictingFactors: best.result.conflictingFactors.map((f) => ({ label: f.label, detail: f.detail })),
-      sourceUrl: directory.sourceUrl,
-      message: `The best directory match scored ${Math.round(best.result.confidence * 100)}%, below the ${Math.round(DIRECTORY_MATCH_THRESHOLD * 100)}% needed to accept it automatically.`,
-    };
-  }
-
-  // Only non-sensitive fields the directory actually published.
-  const fields: EnrichmentFields = {};
-  if (best.entry.email) fields.email = best.entry.email;
-  if (best.entry.major) fields.major = best.entry.major;
-  if (best.entry.graduationYear) fields.graduationYear = best.entry.graduationYear;
-
-  return {
-    outcome: "MATCHED",
-    matchConfidence: best.result.confidence,
-    matchedName: best.entry.normalizedName,
-    fields,
-    matchingFactors: best.result.matchingFactors.map((f) => ({ label: f.label, detail: f.detail })),
-    conflictingFactors: best.result.conflictingFactors.map((f) => ({ label: f.label, detail: f.detail })),
-    sourceUrl: directory.sourceUrl,
-    message: `Matched ${best.entry.normalizedName} in ${directory.sourceName} at ${Math.round(best.result.confidence * 100)}% confidence.`,
-  };
-}
+export * from "@/lib/pipeline/enrich/types";
+export {
+  AMBIGUITY_MARGIN,
+  DIRECTORY_MATCH_THRESHOLD,
+  enrichCandidate,
+  type EnrichableCandidate,
+} from "@/lib/pipeline/enrich/match";

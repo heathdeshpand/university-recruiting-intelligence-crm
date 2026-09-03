@@ -38,7 +38,9 @@ interface ClassifyInput {
   text?: string;
 }
 
-const MAX_SCORE = 10;
+// Roughly the score a page matching on path, subdomain, title and roster
+// vocabulary would reach; used to map raw scores onto a 0-1 confidence.
+const MAX_SCORE = 11;
 
 function scoreCategory(category: DiscoveryCategory, input: ClassifyInput): ClassificationSignal[] {
   const signals: ClassificationSignal[] = [];
@@ -54,17 +56,32 @@ function scoreCategory(category: DiscoveryCategory, input: ClassifyInput): Class
   const host = url.host.toLowerCase();
   const subdomain = host.split(".")[0] ?? "";
 
+  // The most specific matching hint wins, not the first one listed. Without
+  // this, "/recreation/club-sports/rosters" matches athletics on "sports"
+  // before it matches club sports on "club-sports", and a club sport roster
+  // gets filed as varsity athletics.
+  let bestHint: { hint: string; weight: number } | undefined;
+
   for (const hint of category.pathHints) {
-    if (path.includes(hint)) {
-      // A hint appearing as its own path segment is a much stronger indicator
-      // than one buried inside a longer word.
-      const isSegment = path.split(/[/\-_]/).includes(hint);
-      signals.push({
-        reason: `URL path contains "${hint}"`,
-        weight: isSegment ? 3 : 1.5,
-      });
-      break;
-    }
+    if (!path.includes(hint)) continue;
+
+    // A hint delimited by path separators is a much stronger indicator than
+    // one buried inside a longer word ("greek" in "greeknews").
+    const delimited = new RegExp(`(?:^|[/\\-_.])${hint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[/\\-_.]|$)`).test(
+      path,
+    );
+    // Longer hints are more specific and are weighted accordingly.
+    const specificity = Math.min(1.5, hint.length / 10);
+    const weight = (delimited ? 3 : 1.5) + specificity;
+
+    if (!bestHint || weight > bestHint.weight) bestHint = { hint, weight };
+  }
+
+  if (bestHint) {
+    signals.push({
+      reason: `URL path contains "${bestHint.hint}"`,
+      weight: bestHint.weight,
+    });
   }
 
   for (const hint of category.subdomainHints) {

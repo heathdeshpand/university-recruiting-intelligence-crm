@@ -45,10 +45,16 @@ export function visibleText($: Dom, limit = 50_000): string {
  * records and looking like a parser bug.
  */
 export function looksJavaScriptRendered($: Dom, rawHtml: string): boolean {
-  const text = normalizeWhitespace($("body").text());
   const scriptBytes = $("script")
     .toArray()
     .reduce((sum, el) => sum + ($(el).html()?.length ?? 0), 0);
+
+  // Script and style contents are part of body.text(), so measuring the page's
+  // readable text without removing them would count a 30 KB bundle as 30 KB of
+  // content -- and conclude that a completely empty page is full of text.
+  const $body = $("body").clone();
+  $body.find("script, style, noscript, template").remove();
+  const text = normalizeWhitespace($body.text());
 
   if (text.length > 1200) return false;
   if (scriptBytes > 20_000 && text.length < 600) return true;
@@ -190,7 +196,7 @@ export interface RepeatedBlock {
  * find parents with several similar children, and keep the groups whose
  * children mostly read as person names.
  */
-export function findRepeatedBlocks($: Dom, baseUrl: string, minGroupSize = 3): RepeatedBlock[] {
+export function findRepeatedBlocks($: Dom, baseUrl: string, minGroupSize = 2): RepeatedBlock[] {
   const candidates: RepeatedBlock[][] = [];
 
   $("ul, ol, div, section, tbody").each((_, parent) => {
@@ -234,7 +240,13 @@ export function findRepeatedBlocks($: Dom, baseUrl: string, minGroupSize = 3): R
       };
     });
 
-    const nameLike = blocks.filter((b) => containsPersonName(b.text)).length;
+    // Judge each block by its marked-up name element where there is one.
+    // Reading only the flattened text rejects a card whose detail line is
+    // "Class of 2027" -- and because acceptance is a per-group vote, one
+    // unlucky chapter can lose every one of its members that way.
+    const nameLike = blocks.filter(
+      (b) => b.nameCandidates.some(looksLikePersonName) || containsPersonName(b.text),
+    ).length;
     if (nameLike >= Math.max(minGroupSize, blocks.length * 0.5)) {
       candidates.push(blocks);
     }
@@ -314,9 +326,20 @@ export function containsPersonName(text: string): boolean {
   const trimmed = normalizeWhitespace(text);
   if (looksLikePersonName(trimmed)) return true;
 
-  // Cards usually read "Name<newline>Role", so test the leading fragment too.
-  const firstFragment = trimmed.split(/[,–—|·•\n]/)[0] ?? "";
-  return looksLikePersonName(firstFragment.trim());
+  // A trailing class-year phrase is extremely common and is not part of the
+  // name, so it is removed before testing.
+  const withoutYear = normalizeWhitespace(
+    trimmed.replace(/\bclass of\s*['\u2019]?\d{2,4}\b/gi, " ").replace(/['\u2019]\d{2}\b/g, " "),
+  );
+  if (withoutYear !== trimmed && looksLikePersonName(withoutYear)) return true;
+
+  // Cards usually read "Name<separator>Role", so test the leading fragment too.
+  for (const source of [trimmed, withoutYear]) {
+    const firstFragment = (source.split(/[,\u2013\u2014|\u00b7\u2022\n]/)[0] ?? "").trim();
+    if (firstFragment && looksLikePersonName(firstFragment)) return true;
+  }
+
+  return false;
 }
 
 export function absoluteUrl(href: string, baseUrl: string): string {
