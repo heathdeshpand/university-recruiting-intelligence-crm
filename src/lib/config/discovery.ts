@@ -163,3 +163,21 @@ export const SUPPORTED_CONTENT_TYPES = [
   "application/json",
   "text/csv",
 ];
+
+/**
+ * Source types reserved for enrichment.
+ *
+ * These are deliberately excluded from the general collection stage. A public
+ * student directory covers the entire student body, so collecting it up front
+ * would invert the whole product: instead of finding interesting people
+ * through their public involvement and then looking up the few that qualify,
+ * the pipeline would start by ingesting everyone.
+ *
+ * Directories are therefore only ever read during enrichment, and only for
+ * candidates that passed the discovery threshold.
+ */
+export const ENRICHMENT_ONLY_SOURCE_TYPES = ["STUDENT_DIRECTORY"] as const;
+
+export function isEnrichmentOnlySource(sourceType: SourceType): boolean {
+  return (ENRICHMENT_ONLY_SOURCE_TYPES as readonly SourceType[]).includes(sourceType);
+}

@@ -1,0 +1,180 @@
+import type { SourceType } from "@prisma/client";
+import { DISCOVERY_CATEGORIES, type DiscoveryCategory } from "@/lib/config/discovery";
+import { tokenize } from "@/lib/util/text";
+
+/**
+ * URL and page classification.
+ *
+ * Given a URL and whatever context we have about it -- link text, page title,
+ * visible text -- decide which discovery category it belongs to and how
+ * confident that is.
+ *
+ * This is deliberately a transparent scoring function rather than a model.
+ * Every point it awards is attributable to a specific rule, which is what
+ * lets the Sources UI explain why a page was classified the way it was, and
+ * what lets a recruiter correct it sensibly.
+ */
+
+export interface ClassificationSignal {
+  reason: string;
+  weight: number;
+}
+
+export interface Classification {
+  sourceType: SourceType;
+  confidence: number;
+  signals: ClassificationSignal[];
+  /** Human-readable summary stored on the source row. */
+  notes: string;
+}
+
+interface ClassifyInput {
+  url: string;
+  /** Text of the link that led here, if discovered by crawling. */
+  linkText?: string;
+  /** <title> of the page, if it has been fetched. */
+  title?: string;
+  /** Visible text of the page, if it has been fetched. */
+  text?: string;
+}
+
+const MAX_SCORE = 10;
+
+function scoreCategory(category: DiscoveryCategory, input: ClassifyInput): ClassificationSignal[] {
+  const signals: ClassificationSignal[] = [];
+
+  let url: URL;
+  try {
+    url = new URL(input.url);
+  } catch {
+    return signals;
+  }
+
+  const path = url.pathname.toLowerCase();
+  const host = url.host.toLowerCase();
+  const subdomain = host.split(".")[0] ?? "";
+
+  for (const hint of category.pathHints) {
+    if (path.includes(hint)) {
+      // A hint appearing as its own path segment is a much stronger indicator
+      // than one buried inside a longer word.
+      const isSegment = path.split(/[/\-_]/).includes(hint);
+      signals.push({
+        reason: `URL path contains "${hint}"`,
+        weight: isSegment ? 3 : 1.5,
+      });
+      break;
+    }
+  }
+
+  for (const hint of category.subdomainHints) {
+    if (subdomain === hint || host.startsWith(`${hint}.`)) {
+      signals.push({ reason: `Hosted on the "${hint}" subdomain`, weight: 2 });
+      break;
+    }
+  }
+
+  const titleText = (input.title ?? "").toLowerCase();
+  for (const keyword of category.titleKeywords) {
+    if (titleText.includes(keyword)) {
+      signals.push({ reason: `Page title mentions "${keyword}"`, weight: 3 });
+      break;
+    }
+  }
+
+  const linkText = (input.linkText ?? "").toLowerCase();
+  for (const keyword of category.titleKeywords) {
+    if (linkText.includes(keyword)) {
+      signals.push({ reason: `Link text mentions "${keyword}"`, weight: 1.5 });
+      break;
+    }
+  }
+
+  // Roster vocabulary is what separates "a page about club sports" from "a
+  // page listing club sport members". It is weighted modestly here because
+  // validation, not classification, is what finally decides usability.
+  const bodyText = (input.text ?? "").toLowerCase().slice(0, 20_000);
+  if (bodyText) {
+    const hits = category.rosterKeywords.filter((k) => bodyText.includes(k));
+    if (hits.length > 0) {
+      signals.push({
+        reason: `Page uses roster vocabulary (${hits.slice(0, 3).join(", ")})`,
+        weight: Math.min(2, hits.length * 0.7),
+      });
+    }
+  }
+
+  return signals;
+}
+
+export function classifyUrl(input: ClassifyInput): Classification {
+  let best: { category: DiscoveryCategory; signals: ClassificationSignal[]; score: number } | null =
+    null;
+
+  for (const category of DISCOVERY_CATEGORIES) {
+    const signals = scoreCategory(category, input);
+    const score = signals.reduce((sum, s) => sum + s.weight, 0);
+    if (score > 0 && (!best || score > best.score)) {
+      best = { category, signals, score };
+    }
+  }
+
+  if (!best) {
+    return {
+      sourceType: "UNKNOWN",
+      confidence: 0,
+      signals: [],
+      notes: "Nothing in the URL, title or link text matched a known discovery category.",
+    };
+  }
+
+  const confidence = Math.min(1, best.score / MAX_SCORE);
+
+  return {
+    sourceType: best.category.sourceType,
+    confidence: Number(confidence.toFixed(2)),
+    signals: best.signals,
+    notes: `Classified as ${best.category.label}: ${best.signals.map((s) => s.reason).join("; ")}.`,
+  };
+}
+
+/**
+ * True when a URL is worth fetching during a crawl.
+ *
+ * Discovery has a fixed page budget, so this is what keeps it spent on pages
+ * that could plausibly hold records rather than on news archives and event
+ * calendars.
+ */
+export function isPlausibleDiscoveryTarget(url: string, excludePatterns: string[]): boolean {
+  const lower = url.toLowerCase();
+  if (excludePatterns.some((p) => lower.includes(p))) return false;
+
+  try {
+    const parsed = new URL(url);
+    // Very deep paths are almost always individual articles or events.
+    if (parsed.pathname.split("/").filter(Boolean).length > 6) return false;
+    // Query strings with pagination are fine; anything else usually is not.
+    if (parsed.search && !/[?&](page|p|start|offset|letter)=/.test(parsed.search)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Any category keyword appearing in a string, used to rank crawl frontier. */
+export function crawlPriority(url: string, linkText: string): number {
+  const haystack = `${url} ${linkText}`.toLowerCase();
+  const tokens = new Set(tokenize(haystack));
+
+  let priority = 0;
+  for (const category of DISCOVERY_CATEGORIES) {
+    for (const hint of [...category.pathHints, ...category.titleKeywords]) {
+      const parts = hint.split(/[\s-]/);
+      if (parts.every((p) => tokens.has(p) || haystack.includes(p))) {
+        priority += 2;
+        break;
+      }
+    }
+  }
+  return priority;
+}

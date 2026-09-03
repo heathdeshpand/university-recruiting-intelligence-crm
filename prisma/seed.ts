@@ -31,8 +31,12 @@ async function main() {
     console.log(`  removed ${removed.universities} demo universit(ies) and everything under them`);
   }
 
-  console.log("Installing built-in configuration…");
-  const config = await bootstrapConfiguration(prisma);
+  console.log(
+    reset
+      ? "Restoring built-in configuration to defaults…"
+      : "Installing built-in configuration…",
+  );
+  const config = await bootstrapConfiguration(prisma, { restoreDefaults: reset });
   console.log(
     `  ${config.signalDefinitions} signal definitions, ${config.scoringConfigs} scoring configs, ${config.scoringRules} scoring rules`,
   );

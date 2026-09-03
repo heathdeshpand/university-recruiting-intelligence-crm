@@ -17,6 +17,15 @@ export const FIRST_NAMES = [
   "Diego", "Fatima", "Wei", "Ines", "Omar", "Nia", "Kenji", "Rosa",
   "Malik", "Chloe", "Ibrahim", "Yara", "Santiago", "Amara", "Dmitri", "Leila",
   "Thomas", "Isabella", "Benjamin", "Zoe", "Patrick", "Maya", "Gregory", "Ava",
+  "Nathan", "Camila", "Ethan", "Harper", "Lucas", "Aria", "Mason", "Layla",
+  "Caleb", "Naomi", "Isaac", "Sienna", "Jordan", "Elena", "Xavier", "Nora",
+  "Adrian", "Ruby", "Felix", "Talia", "Simon", "Marisol", "Owen", "Jasmine",
+  "Hugo", "Delphine", "Arjun", "Anika", "Tobias", "Freya", "Mateo", "Lucia",
+  "Emeka", "Adaeze", "Sung", "Hana", "Rafael", "Bianca", "Levi", "Noor",
+  "Declan", "Saoirse", "Kofi", "Amani", "Viktor", "Katarina", "Idris", "Zainab",
+  "Hector", "Paloma", "Anders", "Ingrid", "Tariq", "Salma", "Cyrus", "Neda",
+  "Quentin", "Cordelia", "Rowan", "Imogen", "Silas", "Beatrix", "Jasper", "Wren",
+  "Emmett", "Marguerite", "Corbin", "Anneliese", "Dashiell", "Rosalind",
 ];
 
 export const LAST_NAMES = [
@@ -29,6 +38,17 @@ export const LAST_NAMES = [
   "Patel", "Okafor", "Kowalski", "Petrov", "Nakamura", "Rossi", "Dubois",
   "Andersen", "Kaur", "Osei", "Silva", "Haddad", "Novak", "Fitzgerald",
   "Whitfield", "Ashford", "Brennan", "Calloway", "Delgado", "Ellsworth",
+  "Farrington", "Gallagher", "Hollister", "Ibarra", "Jankowski", "Keegan",
+  "Lindqvist", "Marchetti", "Nakagawa", "Oyelaran", "Pemberton", "Quintero",
+  "Ravensworth", "Stavros", "Thorne", "Ueda", "Vasquez", "Wexford", "Yamada",
+  "Zielinski", "Abernathy", "Bhattacharya", "Castellanos", "Dumitrescu",
+  "Eriksson", "Fontaine", "Grigoryan", "Hakimi", "Ivanova", "Jimenez",
+  "Kirchner", "Lindstrom", "Mbeki", "Nasrallah", "Ochoa", "Pavlenko",
+  "Rasmussen", "Sokolov", "Tanaka", "Uchenna", "Villanueva", "Wojcik",
+  "Yilmaz", "Zaragoza", "Applebaum", "Beaumont", "Chowdhury", "Devereaux",
+  "Escobar", "Falconer", "Gutierrez", "Hasegawa", "Ingersoll", "Jovanovic",
+  "Kensington", "Larsson", "Montgomery", "Nordstrom", "Ostrowski", "Pritchard",
+  "Rutherford", "Sandoval", "Trevino", "Underwood", "Vandenberg", "Whitaker",
 ];
 
 export const MAJORS = [

@@ -195,13 +195,20 @@ export function looksLikePersonName(raw: string): boolean {
   if (words.length < 2 || words.length > 5) return false;
 
   // Sentence-like text and page furniture.
+  //
+  // Matched as whole words, not substrings. Substring matching looks harmless
+  // until it quietly rejects everyone surnamed Moore ("more"), Allen ("all")
+  // or Calloway ("all") -- which is exactly the kind of silent data loss this
+  // pipeline must not have.
   const lowered = s.toLowerCase();
-  const NON_NAME_WORDS = [
+  const NON_NAME_WORDS = new Set([
     "click", "here", "more", "home", "about", "contact", "search", "menu", "login",
-    "read", "view", "all", "page", "list", "join", "learn", "apply", "the ", " and ",
-    "university", "college", "department", "office", "copyright", "rights reserved",
-  ];
-  if (NON_NAME_WORDS.some((w) => lowered.includes(w))) return false;
+    "read", "view", "all", "page", "list", "join", "learn", "apply", "the", "and",
+    "university", "college", "department", "office", "copyright", "reserved",
+    "submit", "sign", "register", "back", "next", "previous", "toggle",
+  ]);
+  const loweredWords = lowered.split(/[^a-z']+/).filter(Boolean);
+  if (loweredWords.some((w) => NON_NAME_WORDS.has(w))) return false;
 
   // Every word should be alphabetic-ish and capitalized or fully uppercase.
   return words.every((w) => {

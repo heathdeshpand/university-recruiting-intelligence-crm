@@ -207,10 +207,11 @@ function buildSources(
         name: nameVariant(p, rng),
         organization: p.greek,
         role: rng.chance(0.2) ? rng.pick(LEADERSHIP_TITLES) : undefined,
-        // Greek chapter pages routinely omit academic detail. Those gaps are
-        // UNKNOWN, and the pipeline must not read them as absence.
-        year: rng.chance(0.45) ? String(p.gradYear) : undefined,
-        major: rng.chance(0.3) ? p.major : undefined,
+        // Chapter pages publish a class year more often than a major, and
+        // omit both entirely for some members. Those gaps stay UNKNOWN; the
+        // pipeline must never read them as absence.
+        year: rng.chance(0.85) ? String(p.gradYear) : undefined,
+        major: rng.chance(0.45) ? p.major : undefined,
       });
     }
     sources.push({
@@ -245,11 +246,11 @@ function buildSources(
           name: nameVariant(p, rng),
           organization: m.org,
           role: m.role,
-          major: rng.chance(0.55) ? p.major : undefined,
+          major: rng.chance(0.7) ? p.major : undefined,
           // A small share of records disagree about graduation year. Entity
           // resolution has to treat that as a conflicting factor rather than
           // a disqualifier.
-          year: rng.chance(0.6)
+          year: rng.chance(0.9)
             ? String(rng.chance(0.06) ? p.gradYear + rng.pick([-1, 1]) : p.gradYear)
             : undefined,
         });
@@ -276,7 +277,8 @@ function buildSources(
           organization: sport,
           sport: sport.replace(/^Club /, ""),
           role: rng.chance(0.12) ? "Captain" : undefined,
-          year: rng.chance(0.5) ? String(p.gradYear) : undefined,
+          year: rng.chance(0.9) ? String(p.gradYear) : undefined,
+          major: rng.chance(0.5) ? p.major : undefined,
         });
       }
     }

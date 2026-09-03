@@ -17,7 +17,10 @@ export interface BootstrapResult {
   scoringRules: number;
 }
 
-export async function bootstrapConfiguration(prisma: PrismaClient): Promise<BootstrapResult> {
+export async function bootstrapConfiguration(
+  prisma: PrismaClient,
+  options: { restoreDefaults?: boolean } = {},
+): Promise<BootstrapResult> {
   let scoringRules = 0;
 
   for (const def of SIGNAL_DEFINITIONS) {
@@ -36,6 +39,9 @@ export async function bootstrapConfiguration(prisma: PrismaClient): Promise<Boot
       update: {
         description: configSeed.description,
         categoryCaps: configSeed.categoryCaps as never,
+        ...(options.restoreDefaults
+          ? { discoveryThreshold: configSeed.discoveryThreshold }
+          : {}),
       },
       create: {
         name: configSeed.name,
@@ -55,6 +61,17 @@ export async function bootstrapConfiguration(prisma: PrismaClient): Promise<Boot
           category: rule.category,
           signalKey: rule.signalKey,
           order: rule.order,
+          // Points are a recruiter's to tune, so an ordinary re-seed leaves
+          // them alone. `demo:reset` passes restoreDefaults to put them back.
+          ...(options.restoreDefaults
+            ? {
+                points: rule.points,
+                minOccurrences: rule.minOccurrences ?? 1,
+                pointsPerExtraOccurrence: rule.pointsPerExtraOccurrence ?? 0,
+                maxPoints: rule.maxPoints ?? null,
+                active: true,
+              }
+            : {}),
         },
         create: {
           configId: config.id,
