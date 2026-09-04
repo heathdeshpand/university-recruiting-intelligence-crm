@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getDashboardStats } from "@/lib/api/stats";
+import { demoModeEnabled } from "@/lib/env";
 
 export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -33,13 +34,24 @@ export default async function DashboardPage() {
             icon={<Building2 />}
             title="No universities yet"
             description={
-              <>
-                Add a university to begin, or run{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                  npm run db:seed
-                </code>{" "}
-                to load the synthetic demo dataset and walk the whole pipeline end to end.
-              </>
+              // Only offer the demo dataset when demo mode is on. An
+              // installation that has deliberately removed the synthetic data
+              // should not be invited to load it back.
+              demoModeEnabled ? (
+                <>
+                  Add a university to begin, or run{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    npm run db:seed
+                  </code>{" "}
+                  to load the synthetic demo dataset and walk the whole pipeline end to end.
+                </>
+              ) : (
+                <>
+                  Add a university with its public domains, then run source discovery to find what
+                  it publishes. Discovery only reads pages — nothing is stored until you run
+                  collection.
+                </>
+              )
             }
             action={
               <Button asChild>
