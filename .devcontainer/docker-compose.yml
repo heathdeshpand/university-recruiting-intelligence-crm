@@ -2,18 +2,17 @@
 #
 # This is development tooling, not a deployment. The database password is
 # fixed and trivial on purpose -- the container is not reachable from outside
-# the codespace, and using a "real" secret here would only teach the habit of
-# putting secrets in source control.
+# the environment, and putting a "real" secret here would only teach the habit
+# of committing secrets.
 
 services:
   app:
     image: mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm
+    # The canonical dev-container mount. devcontainer.json's workspaceFolder
+    # points inside this, at /workspaces/<repo-name>.
     volumes:
       - ../..:/workspaces:cached
-      - ..:/workspace:cached
     command: sleep infinity
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/recruiting_crm?schema=public
     depends_on:
       db:
         condition: service_healthy

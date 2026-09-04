@@ -2,36 +2,35 @@
   "name": "Recruiting Intelligence CRM",
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
-  "workspaceFolder": "/workspace",
+
+  // Codespaces clones the repository into /workspaces/<repo-name>. This must
+  // match the mount in docker-compose.yml, or postCreateCommand runs in a
+  // directory the terminal never opens and the install appears not to happen.
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
 
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
 
-  "forwardPorts": [3000, 5432],
+  "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
       "label": "Application",
-      "onAutoForward": "openBrowserOnce"
-    },
-    "5432": {
-      "label": "PostgreSQL",
-      "onAutoForward": "silent"
+      "onAutoForward": "notify"
     }
   },
 
   "postCreateCommand": "bash .devcontainer/setup.sh",
+  "waitFor": "postCreateCommand",
 
   "customizations": {
     "vscode": {
       "extensions": [
         "Prisma.prisma",
         "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
         "bradlc.vscode-tailwindcss"
       ],
       "settings": {
-        "editor.formatOnSave": false,
         "typescript.tsdk": "node_modules/typescript/lib"
       }
     }

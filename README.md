@@ -66,7 +66,7 @@ it is not a static site, so it cannot run on GitHub Pages.
 
 Click **Code → Codespaces → Create codespace on main**. The dev container
 installs dependencies, starts PostgreSQL, migrates, and seeds the demo dataset
-automatically. When it finishes:
+automatically. Wait for the setup log to print `Ready.`, then:
 
 ```bash
 npm run dev
@@ -74,6 +74,13 @@ npm run dev
 
 Port 3000 forwards on its own. This is the fastest way to show someone the
 product without them installing anything.
+
+If `npm run dev` reports `next: not found`, setup did not finish — run it
+yourself and the codespace is fine from then on:
+
+```bash
+npm install && npm run db:migrate:deploy && npm run db:seed
+```
 
 ### Locally
 

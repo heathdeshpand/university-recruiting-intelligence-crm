@@ -5,7 +5,15 @@
 If you have a GitHub account and do not want to install anything, open the
 repository and choose **Code → Codespaces → Create codespace on main**. The
 dev container in `.devcontainer/` installs dependencies, starts PostgreSQL,
-generates a session secret, migrates and seeds. Then `npm run dev`.
+generates a session secret, migrates and seeds. Wait for `Ready.` in the setup
+log, then `npm run dev`.
+
+If the app reports `next: not found`, the post-create step did not finish.
+Running it by hand fixes the codespace permanently:
+
+```bash
+npm install && npm run db:migrate:deploy && npm run db:seed
+```
 
 Everything below is for running it on your own machine.
 
