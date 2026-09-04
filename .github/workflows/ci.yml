@@ -36,9 +36,9 @@ jobs:
       ENABLE_LIVE_NETWORK: "false"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -94,10 +94,17 @@ jobs:
     name: Dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
+
       - run: npm ci
-      - run: npm audit --audit-level=moderate
+
+      # Fails on a real vulnerability, but not when npm's audit endpoint is
+      # having a bad day. An outage at a third party is not a defect in this
+      # repository, and letting one turn the build red trains people to ignore
+      # a red build -- which is more expensive than a missed audit run.
+      - name: Audit dependencies
+        run: node scripts/audit.mjs --level=moderate
