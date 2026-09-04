@@ -12,6 +12,7 @@ const TABS = [
   { segment: "entity-resolution", label: "Entity resolution" },
   { segment: "enrichment", label: "Enrichment" },
   { segment: "scoring", label: "Scoring" },
+  { segment: "quality", label: "Data quality" },
   { segment: "exports", label: "Exports" },
   { segment: "jobs", label: "Jobs" },
 ] as const;

@@ -107,7 +107,10 @@ evidence is rebuilt.
 `Job` and `JobLog` carry pipeline runs, progress and output. `Export` records
 generated workbooks; the files themselves live outside the repository.
 `AuditLog` is append-only and records source activation, match decisions,
-manual merges, score recalculation and export downloads.
+manual merges and splits, score recalculation, configuration changes and
+export downloads. Its university reference is `SetNull` rather than `Cascade`:
+an audit entry has to outlive the thing it describes, or deleting a university
+would destroy the record of everything done to it — including the deletion.
 
 ## Future outcome tracking
 

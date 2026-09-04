@@ -14,6 +14,7 @@ import {
   TierBadge,
 } from "@/components/app/badges";
 import { CandidateActions } from "@/app/(app)/candidates/[id]/actions";
+import { ManualOverrides } from "@/app/(app)/candidates/[id]/manual-overrides";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -265,9 +266,37 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
             <CardTitle>Source records</CardTitle>
             <CardDescription>
               Every record entity resolution assigned to this candidate, exactly as each source
-              published it.
+              published it. If any of them belong to a different person, split them off.
             </CardDescription>
           </CardHeader>
+
+          <CardContent className="pb-4">
+            <ManualOverrides
+              candidateId={candidate.id}
+              universitySlug={candidate.university.slug}
+              initial={{
+                canonicalName: candidate.canonicalName,
+                firstName: candidate.firstName,
+                lastName: candidate.lastName,
+                major: candidate.major,
+                graduationYear: candidate.graduationYear,
+              }}
+              records={candidate.sourceRecords.map((link) => ({
+                normalizedRecordId: link.normalizedRecordId,
+                label: link.normalizedRecord.rawRecord.rawName ?? link.normalizedRecord.normalizedName,
+                detail: [
+                  link.normalizedRecord.organization,
+                  link.normalizedRecord.role,
+                  link.normalizedRecord.graduationYear ? `Class of ${link.normalizedRecord.graduationYear}` : null,
+                  link.normalizedRecord.rawRecord.source.name,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+                pinned: link.pinned,
+              }))}
+            />
+          </CardContent>
+
           <CardContent className="p-0">
             <Table>
               <TableHeader>

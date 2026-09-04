@@ -7,6 +7,8 @@ import {
   Database,
   FileSpreadsheet,
   GitMerge,
+  History,
+  ShieldCheck,
   LayoutDashboard,
   ListChecks,
   Settings,
@@ -30,6 +32,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/entity-resolution", label: "Entity Resolution", icon: GitMerge },
   { href: "/jobs", label: "Jobs", icon: ListChecks },
   { href: "/exports", label: "Exports", icon: FileSpreadsheet },
+  { href: "/data-quality", label: "Data quality", icon: ShieldCheck },
+  { href: "/activity", label: "Activity", icon: History },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

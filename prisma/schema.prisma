@@ -980,7 +980,12 @@ model AuditLog {
   entityType   String
   entityId     String?
   universityId String?
-  university   University? @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  // Deliberately SetNull rather than Cascade. An audit entry must outlive the
+  // thing it describes -- cascading would delete the record of what was done
+  // to a university at the moment someone deletes that university, including
+  // the record of the deletion itself. The summary carries the university's
+  // name, so an orphaned entry stays readable.
+  university   University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
 
   summary  String
   metadata Json?

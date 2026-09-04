@@ -81,7 +81,11 @@ network switch, robots.txt, per-host delays, timeouts and a response size cap.
 A new adapter cannot bypass it.
 
 **Audit logging** covers source activation, match decisions, manual merges and
-splits, score recalculation, configuration changes, exports and downloads.
+splits, score recalculation, configuration changes, exports and downloads, and
+is readable in the application under Activity. Entries survive the deletion of
+what they describe -- deleting a university nulls the reference rather than
+cascading, so the record of what was done to it, including the deletion, is
+not destroyed along with it.
 
 **Logs redact** email, phone, password, token, key, cookie and authorization
 fields.

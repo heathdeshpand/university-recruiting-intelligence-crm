@@ -302,7 +302,8 @@ what the rules said when it ran.
 | Selective enrichment | Implemented |
 | CRM, candidate detail, filters | Implemented |
 | Workbook export | Implemented |
-| Jobs, audit log, analytics, Demo Mode | Implemented |
+| Jobs, audit log with a readable Activity view | Implemented |
+| Data-quality analytics, manual overrides, Demo Mode | Implemented |
 | PDF extraction | Detected and reported; not implemented |
 | JavaScript-rendered pages | Detected and reported; not implemented |
 | Source drift alerting | Recorded, not alerted on |

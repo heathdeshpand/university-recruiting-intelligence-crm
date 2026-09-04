@@ -115,3 +115,143 @@ export async function getScoreDistribution(
 
   return ranges.map((r, i) => ({ ...r, count: counts[i] ?? 0 }));
 }
+
+export interface DataQuality {
+  rawRecords: number;
+  normalizedRecords: number;
+  /** Raw records that produced no normalized record, and why that happens. */
+  unnormalizedRecords: number;
+  candidates: number;
+  /** How much entity resolution consolidated, 0-1. */
+  consolidationRate: number | null;
+  unresolvedMatches: number;
+  averageMatchConfidence: number | null;
+  candidatesNeedingReview: number;
+
+  sourcesTotal: number;
+  sourcesActive: number;
+  sourcesFailed: number;
+  sourcesNotFound: number;
+  sourcesNeedingReview: number;
+
+  enrichmentAttempted: number;
+  enrichmentMatched: number;
+  enrichmentAmbiguous: number;
+  enrichmentNoMatch: number;
+
+  /** Fields that are unknown, which is not the same as being absent. */
+  missingMajor: number;
+  missingGraduationYear: number;
+  missingEmail: number;
+  unscored: number;
+
+  candidatesBySource: Array<{ name: string; count: number }>;
+  candidatesBySignalCategory: Array<{ category: string; count: number }>;
+}
+
+/**
+ * The data-quality picture for a university, or for everything.
+ *
+ * Deliberately includes the unflattering numbers. How many raw records never
+ * became a person, how many matches nobody has decided, how many candidates
+ * have no major recorded -- these are what tell a recruiter how much to trust
+ * what they are looking at, and hiding them would make the product feel more
+ * confident than it has earned.
+ */
+export async function getDataQuality(universityId?: string): Promise<DataQuality> {
+  const scope = universityId ? { universityId } : {};
+
+  const [
+    rawRecords,
+    normalizedRecords,
+    candidates,
+    unresolvedMatches,
+    confidence,
+    needingReview,
+    sourceGroups,
+    enrichmentOutcomes,
+    missingMajor,
+    missingGraduationYear,
+    missingEmail,
+    unscored,
+    sources,
+    signalGroups,
+  ] = await Promise.all([
+    prisma.rawRecord.count({ where: scope }),
+    prisma.normalizedRecord.count({ where: scope }),
+    prisma.candidate.count({ where: scope }),
+    prisma.entityMatch.count({
+      where: { ...scope, status: { in: ["PROBABLE_MATCH", "MANUAL_REVIEW"] }, manualDecision: null },
+    }),
+    prisma.candidate.aggregate({
+      where: { ...scope, matchConfidence: { not: null } },
+      _avg: { matchConfidence: true },
+    }),
+    prisma.candidate.count({ where: { ...scope, needsReview: true } }),
+    prisma.universitySource.groupBy({
+      by: ["status"],
+      where: scope,
+      _count: { _all: true },
+    }),
+    prisma.enrichmentResult.groupBy({
+      by: ["outcome"],
+      where: universityId ? { enrichmentJob: { universityId } } : {},
+      _count: { _all: true },
+    }),
+    prisma.candidate.count({ where: { ...scope, major: null } }),
+    prisma.candidate.count({ where: { ...scope, graduationYear: null } }),
+    prisma.candidate.count({ where: { ...scope, email: null } }),
+    prisma.candidate.count({ where: { ...scope, finalScore: null } }),
+    prisma.universitySource.findMany({
+      where: { ...scope, recordCount: { gt: 0 } },
+      select: { name: true, recordCount: true },
+      orderBy: { recordCount: "desc" },
+      take: 12,
+    }),
+    prisma.signal.groupBy({
+      by: ["category"],
+      where: universityId ? { candidate: { universityId } } : {},
+      _count: { _all: true },
+      orderBy: { _count: { category: "desc" } },
+    }),
+  ]);
+
+  const sourceCount = (status: string) =>
+    sourceGroups.find((g) => g.status === status)?._count._all ?? 0;
+  const outcome = (kind: string) =>
+    enrichmentOutcomes.find((g) => g.outcome === kind)?._count._all ?? 0;
+
+  return {
+    rawRecords,
+    normalizedRecords,
+    unnormalizedRecords: Math.max(0, rawRecords - normalizedRecords),
+    candidates,
+    consolidationRate:
+      normalizedRecords > 0 ? Number((1 - candidates / normalizedRecords).toFixed(3)) : null,
+    unresolvedMatches,
+    averageMatchConfidence: confidence._avg.matchConfidence,
+    candidatesNeedingReview: needingReview,
+
+    sourcesTotal: sourceGroups.reduce((sum, g) => sum + g._count._all, 0),
+    sourcesActive: sourceCount("ACTIVE"),
+    sourcesFailed: sourceCount("FAILED"),
+    sourcesNotFound: sourceCount("UNAVAILABLE"),
+    sourcesNeedingReview: sourceCount("REQUIRES_REVIEW"),
+
+    enrichmentAttempted: enrichmentOutcomes.reduce((sum, g) => sum + g._count._all, 0),
+    enrichmentMatched: outcome("MATCHED"),
+    enrichmentAmbiguous: outcome("AMBIGUOUS"),
+    enrichmentNoMatch: outcome("NO_MATCH"),
+
+    missingMajor,
+    missingGraduationYear,
+    missingEmail,
+    unscored,
+
+    candidatesBySource: sources.map((s) => ({ name: s.name, count: s.recordCount })),
+    candidatesBySignalCategory: signalGroups.map((g) => ({
+      category: g.category,
+      count: g._count._all,
+    })),
+  };
+}
