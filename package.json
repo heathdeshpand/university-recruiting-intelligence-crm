@@ -24,7 +24,9 @@
     "demo:reset": "tsx prisma/seed.ts --reset",
     "worker": "tsx scripts/worker.ts",
     "lint:fix": "eslint . --fix",
-    "pipeline": "tsx scripts/run-pipeline.ts"
+    "pipeline": "tsx scripts/run-pipeline.ts",
+    "user": "tsx scripts/user.ts",
+    "demo:remove": "tsx prisma/seed.ts --remove-demo"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -12,6 +12,7 @@
  *
  *   npm run db:seed              install config, user, and demo sources
  *   npm run demo:reset           delete all demo data first, then reseed
+ *   npm run demo:remove          delete demo data and stop
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -23,7 +24,22 @@ const prisma = new PrismaClient();
 
 async function main() {
   const reset = process.argv.includes("--reset");
+  const removeOnly = process.argv.includes("--remove-demo");
   const demoMode = (process.env.DEMO_MODE ?? "true").toLowerCase() === "true";
+
+  // Removing the demo data is how a real installation stops showing synthetic
+  // people. Deleting the universities cascades to every source, record,
+  // candidate, score and export beneath them.
+  if (removeOnly) {
+    const removed = await deleteDemoData(prisma);
+    console.log(
+      removed.universities === 0
+        ? "There was no demo data to remove."
+        : `Removed ${removed.universities} demo universit(ies) and all data beneath them.`,
+    );
+    console.log("Set DEMO_MODE=\"false\" in .env to hide the demo banner.");
+    return;
+  }
 
   if (reset) {
     console.log("Removing existing demo data…");

@@ -119,8 +119,13 @@ Open http://localhost:3000 and sign in with `DEMO_USER_EMAIL` and
 | `npm run db:reset` | Drop, recreate, re-migrate, re-seed |
 | `npm run db:seed` | Install config, user and demo sources |
 | `npm run demo:reset` | Delete demo data, restore default weights, reseed |
+| `npm run demo:remove` | Delete the demo data and stop |
 | `npm run pipeline -- <slug> [STAGE]` | Run the pipeline from the terminal |
 | `npm run worker` | Standalone job worker |
+| `npm run user -- list` | List accounts |
+| `npm run user -- create <email> "<Name>" [ROLE]` | Create an account |
+| `npm run user -- password <email>` | Change a password, signing out that user |
+| `npm run user -- disable <email>` | Disable an account and end its sessions |
 
 ## Running the pipeline from the terminal
 
@@ -144,6 +149,19 @@ Stages: `SOURCE_DISCOVERY`, `SOURCE_VALIDATION`, `DATA_COLLECTION`,
 ## Pointing it at a real university
 
 Out of the box the app never contacts a real website. To change that:
+
+0. Replace the demo account and remove the synthetic data first:
+
+   ```bash
+   npm run user -- create you@example.com "Your Name" ADMIN
+   npm run user -- disable demo@example.com
+   npm run demo:remove
+   ```
+
+   The seeded demo password is a published placeholder. Changing
+   `DEMO_USER_PASSWORD` in `.env` does **not** change an account that already
+   exists — the seed only sets a password when it creates the user — so use
+   `npm run user -- password` for that.
 
 1. Set `ENABLE_LIVE_NETWORK=true` in `.env`.
 2. Set `HTTP_USER_AGENT` to something that identifies you with a real contact

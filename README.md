@@ -166,6 +166,69 @@ Prefer the terminal?
 npm run pipeline -- example-state-university
 ```
 
+## Leaving demo mode
+
+The demo is synthetic and contacts nothing. Moving to real universities is
+five deliberate steps.
+
+**1. Take a real account.** The seeded demo login is a published placeholder
+and must not survive.
+
+```bash
+npm run user -- create you@example.com "Your Name" ADMIN
+npm run user -- disable demo@example.com
+```
+
+Passwords are prompted for, never passed as arguments — an argument ends up in
+shell history and in the process list.
+
+**2. Remove the synthetic data.**
+
+```bash
+npm run demo:remove
+```
+
+This deletes the demo universities and everything beneath them. Do it before
+adding real universities, so no one can confuse fictional candidates for real
+ones. (Demo universities stay labelled either way — a badge in the list, a
+notice on every candidate page — but removing them is cleaner.)
+
+**3. Turn off Demo Mode** in `.env`, which hides the banner:
+
+```bash
+DEMO_MODE="false"
+```
+
+**4. Allow live network access.** This is the deliberate step:
+
+```bash
+ENABLE_LIVE_NETWORK="true"
+HTTP_USER_AGENT="YourOrg-Recruiting/1.0 (+contact: you@yourorg.com)"
+```
+
+Leave `RESPECT_ROBOTS_TXT="true"` and `HTTP_PER_HOST_DELAY_MS` at 1500 or
+above. Put a real, monitored address in the User-Agent — it is how a site
+operator reaches you.
+
+**Before you flip this**, satisfy yourself that you are entitled to fetch the
+sources you are about to point it at. Publicly reachable is not the same as
+permitted: the site's terms, the university's policy, and the data-protection
+law where you and the students are all apply, and none of that is something
+the software can decide for you. See
+[docs/privacy-and-ethics.md](docs/privacy-and-ethics.md).
+
+**5. Add a university and look before you collect.**
+
+Add it at `/universities/new` with its real domains — the primary domain plus
+any separate athletics or student-involvement domains, since discovery only
+ever crawls the domains you list.
+
+Then run **source discovery on its own** and read the Sources tab before
+running anything else. Discovery only reads pages; collection is what stores
+records. Check that what it found is what you expected, correct anything
+misclassified, disable anything you should not be reading — and only then
+collect.
+
 ## What makes it work
 
 ### Entity resolution that refuses to guess
