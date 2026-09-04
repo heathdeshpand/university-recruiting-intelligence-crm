@@ -201,7 +201,7 @@ Confirming merges immediately and pins both records. Rejecting is permanent.
 ## Results on the demo dataset
 
 1,558 normalized records across three universities resolve to 994 candidates —
-a 36% consolidation — with 764 pairs auto-matched and 364 left for a human.
+a 36% consolidation — with 364 pairs left for a human to decide.
 
 That residue is the honest outcome, not a shortfall. Those pairs genuinely
 lack the corroboration to decide automatically, and the deliberate

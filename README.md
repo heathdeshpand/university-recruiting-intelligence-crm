@@ -89,23 +89,26 @@ those come from running the real pipeline, so the demo cannot fake a result.
 1. **Dashboard** — three universities, empty funnel.
 2. **Universities → Example State University → Run full pipeline.** Watch it
    run: nine stages, live progress, a log line per source. About four seconds.
-3. **Sources tab.** Seven sources. One is `Needs review` — a page discovery
-   classified as a roster that turns out to contain only a programme
-   description. Two intramural categories read `Not found`: searched for, not
-   published. The student directory shows **0 records** even though it is
-   valid — it is never collected, only used for enrichment.
+3. **Sources tab.** Thirteen sources: five active, six recorded as `Not found`,
+   one `Validated`, one `Needs review`. The one needing review is a page
+   discovery classified as a roster that turns out to contain only a programme
+   description. The six not found were searched for and do not exist — that is
+   information, not failure. The student directory is `Validated` and shows
+   **0 records**: it is never collected, only read during enrichment.
 4. **Raw data tab.** 1,032 records exactly as each source published them.
-5. **Entity resolution tab.** 1,032 records became 637 candidates. Around 300
-   pairs are waiting for a decision. Open one: two records side by side, what
-   matches, what conflicts.
+5. **Entity resolution tab.** 1,032 records became 637 candidates — a 38%
+   consolidation — with 303 pairs waiting for a decision. Open one: two records
+   side by side, what matches, what conflicts.
 6. **Candidates tab.** Sort by final score, filter by signal.
 7. **Open the top candidate.** This is the point of the product. Both scores
    broken down by category, then every single point traced to a rule, an
    evidence statement, a source and a confidence.
-8. **Enrichment tab.** 83 candidates qualified; 68 matched a directory entry,
-   13 were not found, 2 were too ambiguous to accept. The other 554 candidates
-   were never looked up.
-9. **Exports tab → Generate workbook.** Thirteen sheets, ~350 KB.
+8. **Enrichment tab.** 83 candidates qualified; 68 matched a directory entry
+   and 15 were not found in it. The other 554 candidates were never looked up
+   at all.
+9. **Exports tab → Generate workbook.** Thirteen sheets covering candidates,
+   per-category records, score breakdowns with their evidence,
+   entity-resolution decisions and the source registry.
 10. **Now try Riverbend College.** It publishes no directory at all.
     Enrichment says so plainly and the candidates stay fully scored on their
     public involvement. Same code, different university.
@@ -273,8 +276,9 @@ Honestly, the things most likely to disappoint:
   outcome data behind it. Retune them in Settings.
 - **Real universities are messier than the demo.** Discovery will produce
   false positives, and its page budget is a real constraint.
-- **Entity resolution leaves a backlog.** 364 pairs on the demo dataset. That
-  is the cost of not guessing; at scale it needs bulk review tooling.
+- **Entity resolution leaves a backlog.** 364 pairs across the three demo
+  universities. That is the cost of not guessing; at scale it needs bulk review
+  tooling.
 - **Some pages cannot be read.** PDFs and browser-rendered pages are reported,
   not parsed. CSV import is the documented fallback.
 - **Enrichment fails, often legitimately.** Not every university publishes a
