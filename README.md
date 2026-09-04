@@ -57,7 +57,25 @@ flowchart LR
     J --> L[Workbook export]
 ```
 
-## Quick start
+## Running it
+
+This is a server application with a database. It needs Node and PostgreSQL —
+it is not a static site, so it cannot run on GitHub Pages.
+
+### In a browser, with no setup — GitHub Codespaces
+
+Click **Code → Codespaces → Create codespace on main**. The dev container
+installs dependencies, starts PostgreSQL, migrates, and seeds the demo dataset
+automatically. When it finishes:
+
+```bash
+npm run dev
+```
+
+Port 3000 forwards on its own. This is the fastest way to show someone the
+product without them installing anything.
+
+### Locally
 
 ```bash
 npm install
@@ -75,8 +93,28 @@ npm run dev
 ```
 
 Open http://localhost:3000 and sign in with the demo credentials from your
-`.env`. Full setup, including PostgreSQL, is in
+`.env`. Full setup, including installing PostgreSQL, is in
 **[docs/local-development.md](docs/local-development.md)**.
+
+### Deployed
+
+Any host that runs a Node server alongside a PostgreSQL database will do. Set
+`DATABASE_URL`, a fresh `SESSION_SECRET`, and `APP_URL` to the real origin —
+the CSRF check compares against it, so a wrong value rejects every legitimate
+request. Then run `npm run db:migrate:deploy` and `npm run db:seed`.
+
+**Before exposing it publicly:** change `DEMO_USER_PASSWORD` or delete the demo
+user, and keep `ENABLE_LIVE_NETWORK=false` unless you have decided you are
+entitled to crawl the sources you are pointing it at.
+
+## Continuous integration
+
+Every push runs typecheck, lint, the test suite, a production build, and a
+dependency audit — then seeds the demo dataset, **runs the whole pipeline end
+to end**, and fails if it does not produce candidates, scores and evidence.
+
+A green test suite over a broken pipeline would be a false pass, so CI checks
+the product actually works rather than only that the code compiles.
 
 ## Demo walkthrough
 

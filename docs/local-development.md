@@ -1,5 +1,14 @@
 # Local development
 
+## The quickest path: Codespaces
+
+If you have a GitHub account and do not want to install anything, open the
+repository and choose **Code → Codespaces → Create codespace on main**. The
+dev container in `.devcontainer/` installs dependencies, starts PostgreSQL,
+generates a session secret, migrates and seeds. Then `npm run dev`.
+
+Everything below is for running it on your own machine.
+
 ## Requirements
 
 - Node.js 20 or later (developed on 22)

@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: recruiting_crm
+        ports:
+          - 5432:5432
+        # Without this the job races the database and fails intermittently.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/recruiting_crm?schema=public
+      # Test-only values. Never reuse these anywhere real.
+      SESSION_SECRET: ci-only-session-secret-not-used-outside-github-actions
+      APP_URL: http://localhost:3000
+      DEMO_MODE: "true"
+      # CI must never contact a real website.
+      ENABLE_LIVE_NETWORK: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Apply migrations
+        run: npm run db:migrate:deploy
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # The pipeline is the product. A green test suite with a broken pipeline
+      # would be a false pass, so CI runs it end to end against the synthetic
+      # dataset and fails if it produces nothing.
+      - name: Seed the demo dataset
+        run: npm run db:seed
+
+      - name: Run the full pipeline
+        run: npm run pipeline -- example-state-university
+
+      - name: Assert the pipeline produced candidates and scores
+        run: |
+          npx tsx --eval '
+            import { prisma } from "./src/lib/db";
+            async function main() {
+              const candidates = await prisma.candidate.count();
+              const scored = await prisma.candidate.count({ where: { finalScore: { not: null } } });
+              const evidence = await prisma.evidence.count();
+              console.log(`candidates=${candidates} scored=${scored} evidence=${evidence}`);
+              if (candidates < 100) throw new Error(`Expected the pipeline to resolve at least 100 candidates, got ${candidates}.`);
+              if (scored < 100) throw new Error(`Expected at least 100 scored candidates, got ${scored}.`);
+              if (evidence < 100) throw new Error(`Expected at least 100 evidence records, got ${evidence}.`);
+              await prisma.$disconnect();
+            }
+            main().catch((e) => { console.error(e); process.exit(1); });
+          '
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
