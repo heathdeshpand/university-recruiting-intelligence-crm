@@ -54,7 +54,12 @@ server-side.
 
 **CSRF** is defended twice: `SameSite=Lax` cookies, plus an explicit
 `Origin`/`Referer` check on every state-changing request, so the app does not
-depend on browser behaviour alone.
+depend on browser behaviour alone. The check accepts the configured `APP_URL`
+and the origin the request was actually addressed to, reconstructed from the
+forwarded host and protocol — comparing Origin against the request's own host
+is the standard check, and it means a proxy, tunnel or forwarded port works
+without configuration. An attacker's page has its own origin, which never
+equals the host of the request it forged.
 
 **Rate limiting** is applied per IP to login (10 per 15 minutes) and per user
 to job-starting endpoints and general API traffic. It is in-process and

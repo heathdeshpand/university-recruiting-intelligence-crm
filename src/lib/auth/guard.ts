@@ -50,42 +50,95 @@ export async function requireRole(...roles: SessionUser["role"][]): Promise<Sess
 }
 
 /**
+/**
+ * The origins a state-changing request may legitimately come from.
+ *
+ * Two are accepted, and both are the application's own:
+ *
+ *   APP_URL          what the deployment is configured to be.
+ *   The request host what the browser actually asked for, reconstructed from
+ *                    the forwarded host and protocol.
+ *
+ * Including the request's own host is what makes this work behind a proxy, a
+ * tunnel, or a forwarded port without configuration -- a Codespace serves the
+ * app from https://<name>-3000.app.github.dev while APP_URL still says
+ * localhost, and comparing against APP_URL alone would reject every login.
+ *
+ * It remains a sound CSRF defence. Comparing Origin against the host the
+ * request was sent to is the standard check: an attacker's page has its own
+ * origin, which will never equal the host of the request it forged.
+ */
+function allowedOrigins(h: Headers): string[] {
+  const origins = new Set<string>();
+
+  try {
+    origins.add(new URL(env.APP_URL).origin);
+  } catch {
+    // A malformed APP_URL should not disable the check entirely; the host
+    // below still applies.
+  }
+
+  const forwardedHost = h.get("x-forwarded-host") ?? h.get("host");
+  if (forwardedHost) {
+    // A comma-separated list means several proxies appended to it; the first
+    // is the one the client actually addressed.
+    const host = forwardedHost.split(",")[0]!.trim();
+    const proto = (h.get("x-forwarded-proto") ?? "").split(",")[0]!.trim();
+    for (const scheme of proto ? [proto] : ["https", "http"]) {
+      try {
+        origins.add(new URL(`${scheme}://${host}`).origin);
+      } catch {
+        // Ignore an unparseable host header.
+      }
+    }
+  }
+
+  return [...origins];
+}
+
+/**
  * CSRF defence for state-changing requests.
  *
  * Session cookies are SameSite=Lax, which already blocks cross-site POSTs from
  * a form or fetch. This adds a second, explicit check that the Origin (or
- * Referer) header matches the configured application origin, so the app does
- * not depend on browser SameSite behaviour alone.
+ * Referer) matches an origin the application is actually served from, so the
+ * app does not depend on browser SameSite behaviour alone.
  */
 export async function requireSameOrigin(): Promise<void> {
   const h = await headers();
   const origin = h.get("origin");
   const referer = h.get("referer");
+  const allowed = allowedOrigins(h);
 
-  const allowed = new URL(env.APP_URL).origin;
+  const reject = () => {
+    throw new HttpError(
+      403,
+      "Cross-origin request rejected. If this application is served from a URL other than APP_URL, set APP_URL to that origin.",
+      "csrf",
+    );
+  };
 
   if (origin) {
-    if (origin !== allowed) {
-      throw new HttpError(403, "Cross-origin request rejected.", "csrf");
-    }
+    if (!allowed.includes(origin)) reject();
     return;
   }
 
   if (referer) {
     try {
-      if (new URL(referer).origin !== allowed) {
-        throw new HttpError(403, "Cross-origin request rejected.", "csrf");
-      }
+      if (!allowed.includes(new URL(referer).origin)) reject();
       return;
     } catch {
-      throw new HttpError(403, "Cross-origin request rejected.", "csrf");
+      reject();
     }
+    return;
   }
 
   // Neither header present. Browsers always send Origin on cross-origin
   // state-changing fetches, so this is a non-browser client; require it.
   throw new HttpError(403, "Missing Origin header on a state-changing request.", "csrf");
 }
+
+export { allowedOrigins as __allowedOriginsForTests };
 
 /** Applies a rate limit keyed by an identifier, or throws 429. */
 export function enforceRateLimit(

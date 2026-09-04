@@ -187,6 +187,11 @@ re-collecting, or on scoring without re-resolving.
 
 ## Troubleshooting
 
+**`Cross-origin request rejected` when signing in** — the app is being served
+from an origin it does not recognise. It accepts `APP_URL` and the host the
+request was addressed to, so this should be rare; if it happens behind an
+unusual proxy, set `APP_URL` to the origin your browser shows.
+
 **`Invalid environment configuration`** — a required variable is missing. The
 message names it. Copy `.env.example` and fill in `DATABASE_URL` and
 `SESSION_SECRET`.
