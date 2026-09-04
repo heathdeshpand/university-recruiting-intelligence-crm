@@ -9,6 +9,7 @@ import {
   SEED_PATHS,
 } from "@/lib/config/discovery";
 import { classifyUrl, crawlPriority, isPlausibleDiscoveryTarget } from "@/lib/pipeline/discovery/classifier";
+import { contentFingerprint, loadHtml } from "@/lib/pipeline/extract/dom";
 import type {
   DiscoveredUrl,
   DiscoveryProvider,
@@ -112,6 +113,31 @@ export const crawlDiscoveryProvider: DiscoveryProvider = {
     const notes: string[] = [];
     let pagesFetched = 0;
 
+    // Content fingerprints already seen, so the same page reached by several
+    // URLs is registered once.
+    const seenContent = new Map<string, string>();
+
+    /**
+     * Fingerprints of each domain's soft 404.
+     *
+     * Many university sites answer any unknown path with their homepage and a
+     * 200 status. Without this, every guessed path "succeeds", and the same
+     * navigation menu is discovered as a dozen separate sources. Probing one
+     * deliberately absent URL per domain gives us the shape to ignore.
+     */
+    const softNotFound = new Map<string, string>();
+
+    for (const domain of target.domains) {
+      const probe = `https://${domain}/__does-not-exist-${Date.now().toString(36)}`;
+      const result = await politeFetch(probe);
+      if (result.ok && result.value.contentType.includes("html")) {
+        softNotFound.set(domain, contentFingerprint(loadHtml(result.value.body)));
+        await report(
+          `${domain} answers unknown paths with a page instead of a 404, so identical pages will be ignored.`,
+        );
+      }
+    }
+
     const frontier: FrontierEntry[] = [];
 
     const enqueue = (rawUrl: string, depth: number, label: string) => {
@@ -189,6 +215,19 @@ export const crawlDiscoveryProvider: DiscoveryProvider = {
       const $ = cheerio.load(page.body);
       const title = normalizeWhitespace($("title").first().text());
       const bodyText = normalizeWhitespace($("body").text()).slice(0, 20_000);
+
+      const fingerprint = contentFingerprint($);
+
+      // A soft 404: the path does not exist, whatever the status code said.
+      const host = new URL(page.finalUrl).host.replace(/^www\./, "");
+      const softFingerprint =
+        softNotFound.get(host) ?? softNotFound.get(host.split(".").slice(-2).join("."));
+      if (softFingerprint && softFingerprint === fingerprint) continue;
+
+      // The same page reached by a different URL.
+      const firstSeenAt = seenContent.get(fingerprint);
+      if (firstSeenAt && firstSeenAt !== page.finalUrl) continue;
+      seenContent.set(fingerprint, page.finalUrl);
 
       const classification = classifyUrl({
         url: page.finalUrl,

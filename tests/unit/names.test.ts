@@ -135,3 +135,50 @@ describe("looksLikePersonName", () => {
     expect(looksLikePersonName("https://example.edu/roster")).toBe(false);
   });
 });
+
+describe("looksLikePersonName — the false positives found on a real university site", () => {
+  // Every string here was extracted as a "candidate" from illinois.edu, a
+  // 21-page marketing site. Title Case is the house style of every navigation
+  // menu, so capitalisation alone carries almost no signal.
+  const NOT_PEOPLE = [
+    "Discover Fighting Illini Athletics",
+    "Buy Tickets",
+    "Explore Campus Recreation",
+    "Support DRES Athletics",
+    "Men’s Wheelchair Basketball",
+    "Women’s Wheelchair Basketball",
+    "Men’s Wheelchair Basketball Coach",
+    "Learn More",
+    "Campus Recreation",
+    "Illinois Athletics",
+    "Student Resources",
+    "Head Coach",
+    "Director, Office of the Registrar",
+    "Visit Illinois",
+    "Apply Now",
+    "Our Team",
+  ];
+
+  it.each(NOT_PEOPLE)("rejects %s", (text) => {
+    expect(looksLikePersonName(text)).toBe(false);
+  });
+
+  // The stricter rule must not start rejecting real people.
+  const REAL_PEOPLE = [
+    "Michael Johnson",
+    "CORAZON JOHNSON",
+    "Michael A. Johnson",
+    "Michael Johnson Jr.",
+    "Priyanka Rao",
+    "Mary Ellen Whitfield",
+    // Occupation words that are also genuine given names, which is why they
+    // are only refused after the first position.
+    "Dean Martin",
+    "Chase Cooper",
+    "Marshall Bennett",
+  ];
+
+  it.each(REAL_PEOPLE)("still accepts %s", (text) => {
+    expect(looksLikePersonName(text)).toBe(true);
+  });
+});

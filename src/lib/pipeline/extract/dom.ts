@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import type { AnyNode } from "domhandler";
 import { looksLikePersonName } from "@/lib/util/names";
@@ -18,9 +19,44 @@ export function loadHtml(html: string): Dom {
 }
 
 /** Strips the elements that never contain records but do contain names. */
+/**
+ * Removes the parts of a page that are never records.
+ *
+ * Semantic elements are only half the job. Most university sites mark their
+ * navigation as plain divs with a class like "site-menu", and a navigation
+ * menu is a repeated list of Title Case links -- structurally identical to a
+ * roster. Left in, "Academic Catalog" and "Study Abroad" become candidates.
+ */
 export function stripChrome($: Dom): void {
-  $("script, style, noscript, nav, header, footer, aside, form, svg").remove();
-  $("[role=navigation], [role=banner], [role=contentinfo], .nav, .navbar, .menu, .footer, .header, .breadcrumb").remove();
+  $("script, style, noscript, nav, header, footer, aside, form, svg, iframe, template").remove();
+  $("[role=navigation], [role=banner], [role=contentinfo], [role=search], [role=menu], [role=menubar]").remove();
+
+  // Class and id names that mean chrome, matched as substrings because every
+  // site spells them differently: site-nav, mainNavigation, utility-menu.
+  const CHROME = [
+    "nav", "menu", "navbar", "header", "footer", "breadcrumb", "sidebar",
+    "site-search", "skip-link", "skiplink", "utility", "toolbar", "megamenu",
+    "subnav", "topbar", "banner", "cookie", "social", "share",
+  ];
+
+  $("[class], [id]").each((_, el) => {
+    const $el = $(el);
+    const signature = `${$el.attr("class") ?? ""} ${$el.attr("id") ?? ""}`.toLowerCase();
+    if (CHROME.some((word) => signature.includes(word))) $el.remove();
+  });
+}
+
+/**
+ * A fingerprint of the page's readable content.
+ *
+ * Two URLs returning the same content are the same page. Universities serve a
+ * soft 404 -- the homepage with a 200 status -- for any path that does not
+ * exist, so guessed paths like /clubs and /organizations quietly return
+ * identical pages and get collected once each.
+ */
+export function contentFingerprint($: Dom): string {
+  const text = normalizeWhitespace($("body").text()).toLowerCase();
+  return createHash("sha256").update(text.slice(0, 20_000)).digest("hex").slice(0, 32);
 }
 
 export function textOf($: Dom, el: AnyNode | cheerio.Cheerio<AnyNode>): string {
@@ -239,6 +275,30 @@ export function findRepeatedBlocks($: Dom, baseUrl: string, minGroupSize = 2): R
         remainder,
       };
     });
+
+    // A navigation menu is a repeated list of Title Case links, which is
+    // structurally identical to a roster. What separates them is where the
+    // links go: a menu spans the whole site, a roster points at profiles
+    // under one path. Groups that are entirely links spread across several
+    // sections of the site are navigation.
+    const pureLinks = blocks.filter(
+      (b) => b.links.length === 1 && normalizeWhitespace(b.links[0]!.text) === b.text,
+    );
+
+    if (pureLinks.length >= blocks.length * 0.8) {
+      const sections = new Set(
+        pureLinks
+          .map((b) => {
+            try {
+              return new URL(b.links[0]!.href).pathname.split("/").filter(Boolean)[0] ?? "";
+            } catch {
+              return "";
+            }
+          })
+          .filter(Boolean),
+      );
+      if (sections.size >= 3) return;
+    }
 
     // Judge each block by its marked-up name element where there is one.
     // Reading only the flattened text rejects a card whose detail line is

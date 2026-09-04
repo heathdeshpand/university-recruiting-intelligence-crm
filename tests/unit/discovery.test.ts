@@ -243,3 +243,39 @@ describe("discovery configuration", () => {
     expect(isEnrichmentOnlySource("GREEK_LIFE")).toBe(false);
   });
 });
+
+describe("staff and faculty listings are refused", () => {
+  // A staff directory looks identical to a student roster to every heuristic:
+  // structured, full of real names, on a university domain. Left alone it
+  // fills the CRM with employees. This is how a faculty senate staff page
+  // became "student government" on a real run.
+  const STAFF_PAGES: Array<[string, string]> = [
+    ["https://www.senate.illinois.edu/senatestaff.asp", "Senate Staff"],
+    ["https://example.edu/faculty-directory", "Faculty Directory"],
+    ["https://example.edu/about/our-team", "Our Team"],
+    ["https://example.edu/hr/employees", "Employee Directory"],
+    ["https://example.edu/administration", "Administration"],
+  ];
+
+  it.each(STAFF_PAGES)("refuses %s", (url, title) => {
+    const result = classifyUrl({ url, title });
+    expect(result.sourceType).toBe("UNKNOWN");
+    expect(result.confidence).toBe(0);
+    expect(result.notes).toContain("staff or faculty");
+  });
+
+  it("still classifies genuine student sources", () => {
+    expect(classifyUrl({ url: "https://example.edu/greek-life/chapters", title: "Fraternity and Sorority Life" }).sourceType).toBe("GREEK_LIFE");
+    expect(classifyUrl({ url: "https://example.edu/recreation/club-sports/rosters", title: "Club Sports Rosters" }).sourceType).toBe("CLUB_SPORT");
+  });
+
+  it("does not crawl staff paths", () => {
+    for (const url of [
+      "https://example.edu/staff",
+      "https://example.edu/faculty",
+      "https://example.edu/administration",
+    ]) {
+      expect(isPlausibleDiscoveryTarget(url, CRAWL_EXCLUDE_PATTERNS), url).toBe(false);
+    }
+  });
+});

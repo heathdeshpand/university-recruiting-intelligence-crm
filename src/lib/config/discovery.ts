@@ -149,6 +149,12 @@ export const SEED_PATHS = [
  * plausibly hold records.
  */
 export const CRAWL_EXCLUDE_PATTERNS = [
+  // Staff and faculty listings. These are full of real names, which is
+  // precisely the danger: they pass every person-name check and produce
+  // employees masquerading as students. This product is about students.
+  "/staff", "/faculty", "/employee", "/employees", "/personnel", "/hr/",
+  "/human-resources", "staffdirectory", "senatestaff", "/administration",
+  "/leadership", "/our-team", "/meet-the-team", "/people/staff",
   "/login", "/signin", "/sign-in", "/auth", "/account", "/apply", "/admissions",
   "/give", "/donate", "/privacy", "/terms", "/accessibility", "/copyright",
   "/calendar", "/events/", "/news/", "/blog/", "/search?", "/cart", "/shop",

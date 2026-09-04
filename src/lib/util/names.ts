@@ -181,40 +181,107 @@ function isSuffix(token: string): boolean {
 }
 
 /**
- * True when a string looks like a person's name rather than a heading, a
- * navigation label, or a sentence. Used to keep extractors from turning page
- * furniture into candidate records.
+ * Words that mean a string is not a person's name.
+ *
+ * Every entry here came from a real false positive. Pointed at a university's
+ * marketing site, the earlier version of this function accepted "Buy Tickets",
+ * "Explore Campus Recreation" and "Men's Wheelchair Basketball Coach" as
+ * people, because each is two to four capitalised words with no digits. Title
+ * Case is the default style of every navigation menu ever written, so
+ * capitalisation carries almost no signal on its own.
+ */
+
+/** Verbs that begin a call to action, never a name. */
+const ACTION_WORDS = new Set([
+  "buy", "shop", "explore", "discover", "learn", "read", "watch", "view", "see",
+  "find", "get", "give", "support", "donate", "visit", "apply", "join", "meet",
+  "start", "request", "submit", "download", "register", "subscribe", "browse",
+  "search", "contact", "follow", "share", "book", "reserve", "order", "renew",
+  "report", "enroll", "schedule", "plan", "discover", "experience", "sign",
+]);
+
+/**
+ * Occupations and titles.
+ *
+ * Allowed as the FIRST word, because several are also genuine given names --
+ * Dean, Chase, Chance, Major, Marshall. Anywhere else they indicate a job
+ * title rather than a person.
+ */
+const OCCUPATION_WORDS = new Set([
+  "coach", "director", "manager", "coordinator", "assistant", "associate",
+  "professor", "instructor", "lecturer", "advisor", "adviser", "specialist",
+  "officer", "administrator", "chancellor", "provost", "principal", "supervisor",
+  "analyst", "engineer", "designer", "developer", "consultant", "trainer",
+  "counselor", "counsellor", "therapist", "nurse", "physician", "librarian",
+  "registrar", "bursar", "custodian", "technician", "staff", "faculty",
+  "emeritus", "interim", "acting", "senior", "junior", "head", "chief",
+]);
+
+/** Nouns that appear in programme, facility and section names. */
+const INSTITUTIONAL_WORDS = new Set([
+  "university", "college", "school", "campus", "department", "office", "center",
+  "centre", "institute", "program", "programme", "division", "council", "board",
+  "committee", "association", "society", "foundation", "alumni", "athletics",
+  "recreation", "sports", "sport", "team", "teams", "roster", "schedule",
+  "tickets", "ticket", "news", "events", "event", "gallery", "store", "shop",
+  "camp", "clinic", "league", "conference", "championship", "tournament",
+  "basketball", "football", "soccer", "baseball", "softball", "volleyball",
+  "hockey", "lacrosse", "tennis", "golf", "swimming", "wrestling", "rowing",
+  "gymnastics", "track", "cross", "field", "wheelchair", "intramural",
+  "resources", "services", "admissions", "academics", "research", "giving",
+  "library", "housing", "dining", "parking", "safety", "emergency", "health",
+  "wellness", "career", "employment", "jobs", "directory", "calendar", "map",
+  "home", "about", "overview", "menu", "login", "logout", "account", "help",
+  "faq", "policy", "policies", "terms", "privacy", "copyright", "accessibility",
+  "sitemap", "archive", "blog", "story", "stories", "profile", "profiles",
+  "more", "all", "page", "next", "previous", "back", "top", "here", "click",
+  "the", "and", "for", "with", "your", "our", "their", "this", "that",
+]);
+
+/**
+ * True when a string looks like a person's name.
+ *
+ * Deliberately strict. In this pipeline a false positive is far more costly
+ * than a false negative: a missed name loses one record, while an invented one
+ * becomes a candidate, accretes evidence, gets scored, and is presented to a
+ * recruiter as a real student.
  */
 export function looksLikePersonName(raw: string): boolean {
   const s = normalizeWhitespace(raw);
   if (s.length < 3 || s.length > 60) return false;
-  if (/\d/.test(s.replace(/['’]\s?\d{2,4}\b/g, ""))) return false;
-  if (/[@:/\\]|https?/i.test(s)) return false;
+
+  // A digit that is not a class-year annotation.
+  if (/\d/.test(s.replace(/['\u2019]\s?\d{2,4}\b/g, ""))) return false;
+  if (/[@:/\\]|https?|www\./i.test(s)) return false;
+  // Sentence punctuation, or a list of several things. Short abbreviated
+  // tokens are removed first, because an initial ("A.") and a suffix ("Jr.")
+  // both end in a full stop without making the string a sentence.
+  const withoutAbbreviations = s.replace(/\b[A-Za-z]{1,3}\.\s?/g, "");
+  if (/[.!?](\s|$)/.test(withoutAbbreviations) || s.includes(";")) return false;
 
   const words = s.split(/\s+/).filter(Boolean);
-  if (words.length < 2 || words.length > 5) return false;
+  if (words.length < 2 || words.length > 4) return false;
 
-  // Sentence-like text and page furniture.
-  //
-  // Matched as whole words, not substrings. Substring matching looks harmless
-  // until it quietly rejects everyone surnamed Moore ("more"), Allen ("all")
-  // or Calloway ("all") -- which is exactly the kind of silent data loss this
-  // pipeline must not have.
-  const lowered = s.toLowerCase();
-  const NON_NAME_WORDS = new Set([
-    "click", "here", "more", "home", "about", "contact", "search", "menu", "login",
-    "read", "view", "all", "page", "list", "join", "learn", "apply", "the", "and",
-    "university", "college", "department", "office", "copyright", "reserved",
-    "submit", "sign", "register", "back", "next", "previous", "toggle",
-  ]);
-  const loweredWords = lowered.split(/[^a-z']+/).filter(Boolean);
-  if (loweredWords.some((w) => NON_NAME_WORDS.has(w))) return false;
+  for (const [index, word] of words.entries()) {
+    // Possessives never appear in a name: "Men's Wheelchair Basketball".
+    if (/['\u2019]s$/i.test(word)) return false;
 
-  // Every word should be alphabetic-ish and capitalized or fully uppercase.
-  return words.every((w) => {
-    const b = bare(w);
-    if (b.length === 0) return false;
-    if (b.length === 1 && !w.includes(".")) return false;
-    return /^[A-Z]/.test(b) || b === b.toUpperCase();
+    const bare = word.replace(/[^A-Za-z'-]/g, "").toLowerCase();
+    if (!bare) return false;
+
+    if (ACTION_WORDS.has(bare)) return false;
+    if (INSTITUTIONAL_WORDS.has(bare)) return false;
+    // An occupation is allowed only as the first word, where it may genuinely
+    // be a given name -- Dean, Chase, Marshall.
+    if (index > 0 && OCCUPATION_WORDS.has(bare)) return false;
+  }
+
+  // Every word must read as a name component: capitalised, or fully uppercase
+  // as rosters often are, or a single-letter initial with a full stop.
+  return words.every((word) => {
+    const bare = word.replace(/[^A-Za-z'-]/g, "");
+    if (bare.length === 0) return false;
+    if (bare.length === 1) return word.includes(".");
+    return /^[A-Z]/.test(bare) || bare === bare.toUpperCase();
   });
 }

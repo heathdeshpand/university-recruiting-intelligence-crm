@@ -124,7 +124,69 @@ function scoreCategory(category: DiscoveryCategory, input: ClassifyInput): Class
   return signals;
 }
 
+/**
+ * Words that mean a page lists employees rather than students.
+ *
+ * A staff directory looks exactly like a student roster to every heuristic
+ * here -- structured, full of real names, on a university domain. The only
+ * reliable difference is that it says so, so that is what gets checked.
+ */
+const STAFF_INDICATORS = [
+  "staff", "faculty", "employee", "personnel", "human resources",
+  "administration", "our team", "meet the team", "leadership team",
+];
+
+function looksLikeStaffListing(input: ClassifyInput): boolean {
+  const haystack = `${input.url} ${input.title ?? ""} ${input.linkText ?? ""}`.toLowerCase();
+  return STAFF_INDICATORS.some((word) => haystack.includes(word));
+}
+
+/**
+ * Error pages that answer with a success status.
+ *
+ * Illinois returns a page titled "404 - Page not found" for any unknown path.
+ * It renders the site's navigation, so it looks like a directory of links and
+ * extracts as a list of "people" named Academic Catalog and Study Abroad.
+ * Fingerprinting misses it because each one echoes the path that was asked
+ * for, so the page has to be recognised by what it says.
+ */
+const NOT_FOUND_INDICATORS = [
+  "404", "page not found", "page cannot be found", "page doesn't exist",
+  "page does not exist", "not found", "410 gone", "403 forbidden",
+  "access denied", "error occurred", "something went wrong",
+];
+
+function looksLikeErrorPage(input: ClassifyInput): boolean {
+  const title = (input.title ?? "").toLowerCase().trim();
+  if (!title) return false;
+  // Matched against the title only. The phrase can appear innocently in body
+  // text, but a page whose *title* announces an error is an error page.
+  return NOT_FOUND_INDICATORS.some((phrase) => title.includes(phrase));
+}
+
 export function classifyUrl(input: ClassifyInput): Classification {
+  if (looksLikeErrorPage(input)) {
+    return {
+      sourceType: "UNKNOWN",
+      confidence: 0,
+      signals: [],
+      notes:
+        "Skipped: the page's title says it is an error page. Some sites answer unknown paths with a rendered error page rather than a 404 status.",
+    };
+  }
+
+  // Refused outright rather than scored down. A staff page that scrapes
+  // cleanly would otherwise fill the CRM with employees.
+  if (looksLikeStaffListing(input)) {
+    return {
+      sourceType: "UNKNOWN",
+      confidence: 0,
+      signals: [],
+      notes:
+        "Skipped: this page appears to list staff or faculty rather than students. Employee directories are out of scope.",
+    };
+  }
+
   let best: { category: DiscoveryCategory; signals: ClassificationSignal[]; score: number } | null =
     null;
 
