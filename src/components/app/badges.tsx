@@ -52,8 +52,8 @@ const ENRICHMENT_STATUS: Record<EnrichmentStatus, { label: string; variant: Para
   NOT_ELIGIBLE: { label: "Below threshold", variant: "muted" },
   QUEUED: { label: "Queued", variant: "secondary" },
   PROCESSING: { label: "Processing", variant: "info" },
-  ENRICHED: { label: "Enriched", variant: "success" },
-  FAILED: { label: "No match", variant: "warning" },
+  ENRICHED: { label: "Contact found", variant: "success" },
+  FAILED: { label: "No directory match", variant: "warning" },
   MANUAL_REVIEW: { label: "Ambiguous", variant: "warning" },
 };
 

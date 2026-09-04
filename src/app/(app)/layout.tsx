@@ -19,10 +19,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   return (
-    <div className="flex min-h-screen flex-col">
+    // A fixed-height shell: the banner takes what it needs, the row below
+    // fills the rest, and only the main column scrolls. Making the sidebar
+    // 100vh instead would push its footer below the fold by exactly the
+    // height of the banner.
+    <div className="flex h-screen flex-col overflow-hidden">
       {demoModeEnabled ? <DemoBanner /> : null}
-      <div className="flex flex-1">
-        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-card md:flex">
+      <div className="flex min-h-0 flex-1">
+        <aside className="hidden w-60 shrink-0 flex-col border-r bg-card md:flex">
           <Link href="/" className="flex items-center gap-2.5 border-b px-5 py-4">
             <Radar className="size-5 text-primary" />
             <div className="leading-tight">
@@ -46,7 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 bg-background">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto bg-background">{children}</main>
       </div>
     </div>
   );

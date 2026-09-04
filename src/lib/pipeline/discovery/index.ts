@@ -145,7 +145,23 @@ export async function runSourceDiscovery(
 
   // Record the categories that were searched for and not found, so the UI can
   // distinguish "not published" from "not looked for".
+  //
+  // A category already represented by a source -- whether a working one or an
+  // existing "not found" marker -- is skipped, so re-running discovery cannot
+  // accumulate duplicate placeholders for the same category.
+  const alreadyRepresented = new Set(
+    (
+      await prisma.universitySource.findMany({
+        where: { universityId: target.universityId },
+        select: { sourceType: true },
+        distinct: ["sourceType"],
+      })
+    ).map((s) => s.sourceType),
+  );
+
   for (const type of categoriesNotFound) {
+    if (alreadyRepresented.has(type)) continue;
+
     const category = DISCOVERY_CATEGORIES.find((c) => c.sourceType === type);
     if (!category) continue;
 
