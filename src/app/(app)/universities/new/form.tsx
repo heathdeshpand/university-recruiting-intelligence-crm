@@ -72,17 +72,17 @@ export function NewUniversityForm() {
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="name">Name</Label>
-            <Input id="name" name="name" required placeholder="Example State University" />
+            <Input id="name" name="name" required placeholder="University of Illinois Urbana-Champaign" />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="shortName">Short name</Label>
-              <Input id="shortName" name="shortName" placeholder="ESU" />
+              <Input id="shortName" name="shortName" placeholder="UIUC" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="athleticName">Athletic name</Label>
-              <Input id="athleticName" name="athleticName" placeholder="Example State Foxes" />
+              <Input id="athleticName" name="athleticName" placeholder="Fighting Illini" />
               <p className="text-xs text-muted-foreground">
                 Athletics sites often use a different name from the university.
               </p>
@@ -91,7 +91,7 @@ export function NewUniversityForm() {
 
           <div className="space-y-1.5">
             <Label htmlFor="aliases">Aliases</Label>
-            <Input id="aliases" name="aliases" placeholder="Example State, ESU" />
+            <Input id="aliases" name="aliases" placeholder="Illinois, UIUC, U of I" />
             <p className="text-xs text-muted-foreground">
               Comma separated. Used to recognise the university in page titles and link text.
             </p>
@@ -114,16 +114,20 @@ export function NewUniversityForm() {
               id="primaryDomain"
               name="primaryDomain"
               required
-              placeholder="example.edu"
+              placeholder="illinois.edu"
               className="font-mono"
             />
+            <p className="text-xs text-muted-foreground">
+              A full URL, an email address or a leading @ all work — they are reduced to the
+              domain.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="additionalDomains">Additional domains</Label>
             <Input
               id="additionalDomains"
               name="additionalDomains"
-              placeholder="athletics.example.edu, involvement.example.edu"
+              placeholder="fightingillini.com, involvement.illinois.edu"
               className="font-mono"
             />
             <p className="text-xs text-muted-foreground">

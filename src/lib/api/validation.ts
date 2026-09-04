@@ -9,21 +9,43 @@ import { z } from "zod";
  */
 
 /** Accepts "esu.example.edu", "https://esu.example.edu/path" or "ESU.Example.EDU". */
+/**
+ * Normalizes the many shapes a person reasonably writes a domain in.
+ *
+ * People do not type bare hostnames. They paste a URL, they copy an email
+ * address, they write "@illinois.edu" because that is how a domain looks in
+ * everyday use. All of those mean the same thing, and rejecting them teaches
+ * nothing except that the form is fussy.
+ */
+export function normalizeDomain(raw: string): string {
+  let value = raw.trim().toLowerCase();
+
+  // A pasted URL.
+  value = value.replace(/^[a-z][a-z0-9+.-]*:\/\//, "");
+  // An email address, or a domain written with a leading "@".
+  value = value.slice(value.lastIndexOf("@") + 1);
+  // Path, query, fragment, port.
+  value = value.split(/[/?#]/)[0] ?? value;
+  value = value.split(":")[0] ?? value;
+  // Cosmetic prefixes and a trailing root dot.
+  value = value.replace(/^www\./, "").replace(/\.+$/, "");
+
+  return value;
+}
+
+const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
 export const domainSchema = z
   .string()
   .trim()
-  .min(3, "Enter a domain, for example example.edu")
+  .min(3, "Enter a domain, for example illinois.edu")
   .max(253)
-  .transform((raw) => {
-    let value = raw.trim().toLowerCase();
-    value = value.replace(/^https?:\/\//, "");
-    value = value.split("/")[0] ?? value;
-    value = value.split("?")[0] ?? value;
-    value = value.replace(/^www\./, "");
-    return value;
-  })
-  .refine((v) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v), {
-    message: "That does not look like a valid domain name.",
+  .transform(normalizeDomain)
+  .refine((v) => v.length > 0 && DOMAIN_PATTERN.test(v), {
+    // Say what is wrong and what a good value looks like. "Invalid" on its
+    // own leaves someone guessing at which of a dozen rules they broke.
+    message:
+      "Enter the university's domain on its own, like illinois.edu. A full URL, an email address or a leading @ are all fine — anything else, check for a typo or a stray space.",
   });
 
 export const createUniversitySchema = z.object({
